@@ -1,0 +1,21 @@
+CLAUDE.md
+docs/recherche-portfolio-2026.md
+
+# Secrets 
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+.venv/
+
+# Node / Next.js
+node_modules/
+.next/
+
+# Terraform 
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
