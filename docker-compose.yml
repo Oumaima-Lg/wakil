@@ -1,0 +1,20 @@
+# Lancer : docker compose up -d   ·   Tout effacer et recréer la base : docker compose down -v
+services:
+  db:
+    image: pgvector/pgvector:pg17  # PostgreSQL 17 avec pgvector, qui servira au RAG en S3
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?à définir dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
+      POSTGRES_DB: ${POSTGRES_DB:?à définir dans .env}
+    ports:
+      - "127.0.0.1:5432:5432"  # joignable depuis ton PC uniquement, pas depuis le réseau
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./apps/bank-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  db-data:
