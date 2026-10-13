@@ -16,3 +16,6 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]  # permet aux tests de faire « from app.main import app »
+
+[tool.fastapi]
+entrypoint = "app.main:app"  # permet de lancer « fastapi dev » sans préciser le fichier

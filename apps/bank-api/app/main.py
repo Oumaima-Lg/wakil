@@ -1,6 +1,6 @@
 """Point d'entrée de l'API. Équivalent Spring : la classe annotée @SpringBootApplication.
 
-Lancer (depuis apps/bank-api) : uv run --env-file ../../.env fastapi dev app/main.py
+Lancer (depuis apps/bank-api) : uv run --env-file ../../.env fastapi dev
 Documentation interactive (Swagger) : http://127.0.0.1:8000/docs
 """
 
@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import pool
-from app.routes import comptes, factures, virements
+from app.routers import comptes, factures, virements
 
 
 @asynccontextmanager
