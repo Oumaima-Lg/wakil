@@ -1,0 +1,18 @@
+[project]
+name = "bank-api"
+version = "0.1.0"
+description = "API de la Banque Atlas Démo, la banque fictive de Wakil (données 100 % fictives)."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.143.0",
+    "psycopg[binary,pool]>=3.3.6",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]  # permet aux tests de faire « from app.main import app »
