@@ -1,12 +1,12 @@
 -- Banque Atlas Démo : données 100 % fictives – projet de démonstration.
 -- Exécuté une seule fois par PostgreSQL, à la création du volume (docker compose up).
 
+-- Pas de téléphone : aucune fonctionnalité n'en a besoin (minimisation des données, loi 09-08).
 CREATE TABLE clients (
-    id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    prenom     TEXT NOT NULL,
-    nom        TEXT NOT NULL,
-    telephone  TEXT NOT NULL,
-    ville      TEXT NOT NULL
+    id      INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    prenom  TEXT NOT NULL,
+    nom     TEXT NOT NULL,
+    ville   TEXT NOT NULL
 );
 
 CREATE TABLE comptes (
