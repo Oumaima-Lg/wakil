@@ -1,5 +1,3 @@
-"""Routes des comptes. Équivalent Spring : un @RestController avec @RequestMapping("/comptes")."""
-
 from typing import Annotated
 
 from fastapi import APIRouter, Query

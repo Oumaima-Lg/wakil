@@ -1,5 +1,3 @@
-"""Routes des factures."""
-
 from fastapi import APIRouter, HTTPException
 from psycopg.types.json import Jsonb
 
