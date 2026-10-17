@@ -48,6 +48,8 @@ PHRASES = {
     "lister_factures": "3ndek {impayees} factures mazal ma tkhelsou ({total} DH).",
 }
 
+SALUTATIONS = {"salam", "slm", "salam 3likom", "salam alaykom", "سلام", "السلام عليكم"}
+
 
 # L'état : la « mémoire » partagée que chaque nœud lit et complète.
 class Etat(TypedDict, total=False):
@@ -93,13 +95,26 @@ def apres_comprendre(etat: Etat) -> Literal["executer_outil", "refuser"]:
     return "executer_outil" if etat["outil"] else "refuser"
 
 
+def avant_comprendre(etat: Etat) -> Literal["salam", "comprendre"]:
+    """Aiguillage de départ : une simple salutation ne passe pas par le LLM."""
+    texte = etat["demande"].strip().lower().rstrip("!?.، ")
+    return "salam" if texte in SALUTATIONS else "comprendre"
+
+
+def salam(etat: Etat) -> dict:
+    """Nœud : répond au salut sans appeler le LLM."""
+    return {"reponse": "Wa 3alikom salam ! Ana l'assistant dyal Banque Atlas Démo."}
+
+
 # Le graphe : les cases (nœuds) et les flèches (arêtes).
 graphe = StateGraph(Etat)
+graphe.add_node("salam", salam)
 graphe.add_node("comprendre", comprendre)
 graphe.add_node("executer_outil", executer_outil)
 graphe.add_node("repondre", repondre)
 graphe.add_node("refuser", refuser)
-graphe.add_edge(START, "comprendre")
+graphe.add_conditional_edges(START, avant_comprendre)
+graphe.add_edge("salam", END)
 graphe.add_conditional_edges("comprendre", apres_comprendre)
 graphe.add_edge("executer_outil", "repondre")
 graphe.add_edge("repondre", END)
@@ -107,6 +122,7 @@ graphe.add_edge("refuser", END)
 wakil = graphe.compile()
 
 DEMANDES = [
+    "salam",
     "chhal bqa f compte dyali ?",
     "واش عندي شي فاتورة ما خلصتهاش؟",
     "3tini la liste dyal les transactions dyali",
