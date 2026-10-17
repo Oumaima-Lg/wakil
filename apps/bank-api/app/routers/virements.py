@@ -65,9 +65,7 @@ def faire_virement(demande: DemandeVirement, client_id: ClientConnecte, conn: Co
             emetteur = conn.execute(
                 "SELECT prenom || ' ' || nom AS nom FROM clients WHERE id = %s", (client_id,)
             ).fetchone()["nom"]
-            conn.execute(
-                "UPDATE comptes SET solde = solde + %s WHERE id = %s", (demande.montant, destination_id)
-            )
+            conn.execute("UPDATE comptes SET solde = solde + %s WHERE id = %s", (demande.montant, destination_id))
             conn.execute(
                 "INSERT INTO transactions (compte_id, montant, libelle) VALUES (%s, %s, %s)",
                 (destination_id, demande.montant, f"Virement reçu de {emetteur}"),
@@ -76,12 +74,14 @@ def faire_virement(demande: DemandeVirement, client_id: ClientConnecte, conn: Co
             "INSERT INTO audit (client_id, action, details) VALUES (%s, 'virement', %s)",
             (
                 client_id,
-                Jsonb({
-                    "beneficiaire_id": demande.beneficiaire_id,
-                    "compte_source": source_id,
-                    "compte_destination": destination_id,
-                    "montant": str(demande.montant),
-                }),
+                Jsonb(
+                    {
+                        "beneficiaire_id": demande.beneficiaire_id,
+                        "compte_source": source_id,
+                        "compte_destination": destination_id,
+                        "montant": str(demande.montant),
+                    }
+                ),
             ),
         )
 

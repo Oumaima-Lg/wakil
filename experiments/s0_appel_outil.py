@@ -34,7 +34,10 @@ def outil(nom, description):
 
 OUTILS = [
     outil("consulter_solde", "Donne le solde actuel du compte du client."),
-    outil("lister_transactions", "Liste les dernières opérations du compte du client : l'argent qui est sorti (dépenses, paiements) ou entré (virements reçus)."),
+    outil(
+        "lister_transactions",
+        "Liste les dernières opérations du compte du client : l'argent qui est sorti (dépenses, paiements) ou entré (virements reçus).",
+    ),
     outil("lister_factures", "Liste les factures impayées du client (eau, électricité, internet, mobile)."),
 ]
 
@@ -73,9 +76,7 @@ def demander(demande):
             {"role": "user", "content": demande},
         ],
     }
-    requete = urllib.request.Request(
-        URL, data=json.dumps(corps).encode(), headers={"Content-Type": "application/json"}
-    )
+    requete = urllib.request.Request(URL, data=json.dumps(corps).encode(), headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(requete, timeout=600) as reponse:
         return json.load(reponse)["choices"][0]["message"]
 

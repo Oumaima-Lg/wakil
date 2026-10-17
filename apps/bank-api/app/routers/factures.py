@@ -32,8 +32,7 @@ def payer_facture(facture_id: int, client_id: ClientConnecte, conn: Connexion) -
         # FOR UPDATE verrouille la facture jusqu'à la fin du bloc : si deux demandes de paiement
         # arrivent en même temps, la seconde attend, puis voit « payee » et est refusée.
         facture = conn.execute(
-            "SELECT id, fournisseur, montant, statut FROM factures"
-            " WHERE id = %s AND client_id = %s FOR UPDATE",
+            "SELECT id, fournisseur, montant, statut FROM factures WHERE id = %s AND client_id = %s FOR UPDATE",
             (facture_id, client_id),
         ).fetchone()
         if facture is None:
@@ -60,7 +59,10 @@ def payer_facture(facture_id: int, client_id: ClientConnecte, conn: Connexion) -
         )
         conn.execute(
             "INSERT INTO audit (client_id, action, details) VALUES (%s, 'paiement_facture', %s)",
-            (client_id, Jsonb({"facture_id": facture_id, "compte_id": compte["id"], "montant": str(facture["montant"])})),
+            (
+                client_id,
+                Jsonb({"facture_id": facture_id, "compte_id": compte["id"], "montant": str(facture["montant"])}),
+            ),
         )
 
     return Paiement(

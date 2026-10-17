@@ -23,8 +23,7 @@ def lister_transactions(
 ) -> list[Transaction]:
     """Dernières opérations d'un compte du client connecté, de la plus récente à la plus ancienne."""
     lignes = conn.execute(
-        "SELECT id, date, montant, libelle FROM transactions"
-        " WHERE compte_id = %s ORDER BY date DESC, id DESC LIMIT %s",
+        "SELECT id, date, montant, libelle FROM transactions WHERE compte_id = %s ORDER BY date DESC, id DESC LIMIT %s",
         (compte["id"], limite),
     ).fetchall()
     return [Transaction(**ligne) for ligne in lignes]

@@ -25,18 +25,80 @@ CODE_BANQUE = "000"  # tous les RIB commencent par 000 : aucun ne peut ressemble
 
 # Prénoms et noms courants, mélangés au hasard : les combinaisons ne visent aucune personne réelle.
 PRENOMS = [
-    "Mohamed", "Youssef", "Amine", "Hamza", "Omar", "Mehdi", "Karim", "Anas", "Ayoub", "Ilyas",
-    "Hicham", "Rachid", "Said", "Khalid", "Adil", "Fatima", "Khadija", "Salma", "Imane", "Sara",
-    "Nadia", "Meryem", "Hajar", "Zineb", "Aicha", "Houda", "Laila", "Siham", "Asmae", "Ghita",
+    "Mohamed",
+    "Youssef",
+    "Amine",
+    "Hamza",
+    "Omar",
+    "Mehdi",
+    "Karim",
+    "Anas",
+    "Ayoub",
+    "Ilyas",
+    "Hicham",
+    "Rachid",
+    "Said",
+    "Khalid",
+    "Adil",
+    "Fatima",
+    "Khadija",
+    "Salma",
+    "Imane",
+    "Sara",
+    "Nadia",
+    "Meryem",
+    "Hajar",
+    "Zineb",
+    "Aicha",
+    "Houda",
+    "Laila",
+    "Siham",
+    "Asmae",
+    "Ghita",
 ]
 NOMS = [
-    "Alaoui", "Benali", "Bennani", "Berrada", "Chraibi", "El Amrani", "El Idrissi", "Fassi", "Haddad",
-    "Kettani", "Lahlou", "Mansouri", "Naciri", "Ouazzani", "Rami", "Saidi", "Tazi", "Zahraoui", "Bouzid",
-    "Cherkaoui", "El Ouafi", "Hajji", "Jabri", "Lamrani", "Moussaoui", "Ziani", "Belhaj", "Ait Ali",
+    "Alaoui",
+    "Benali",
+    "Bennani",
+    "Berrada",
+    "Chraibi",
+    "El Amrani",
+    "El Idrissi",
+    "Fassi",
+    "Haddad",
+    "Kettani",
+    "Lahlou",
+    "Mansouri",
+    "Naciri",
+    "Ouazzani",
+    "Rami",
+    "Saidi",
+    "Tazi",
+    "Zahraoui",
+    "Bouzid",
+    "Cherkaoui",
+    "El Ouafi",
+    "Hajji",
+    "Jabri",
+    "Lamrani",
+    "Moussaoui",
+    "Ziani",
+    "Belhaj",
+    "Ait Ali",
 ]
 VILLES = [
-    "Casablanca", "Rabat", "Marrakech", "Fès", "Tanger", "Agadir",
-    "Meknès", "Oujda", "Kénitra", "Tétouan", "Salé", "El Jadida",
+    "Casablanca",
+    "Rabat",
+    "Marrakech",
+    "Fès",
+    "Tanger",
+    "Agadir",
+    "Meknès",
+    "Oujda",
+    "Kénitra",
+    "Tétouan",
+    "Salé",
+    "El Jadida",
 ]
 
 # Fournisseur : (montant minimum, montant maximum) en DH. Uniquement des noms « (démo) ».
@@ -47,23 +109,46 @@ FOURNISSEURS = {
 }
 # Libellés génériques, sans aucune marque réelle.
 DEPENSES = [
-    ("Courses supermarché", 80, 900), ("Retrait guichet automatique", 100, 2000),
-    ("Restaurant", 60, 450), ("Pharmacie", 30, 600), ("Taxi", 15, 120),
-    ("Carburant", 150, 700), ("Café", 10, 60), ("Vêtements", 150, 1200),
+    ("Courses supermarché", 80, 900),
+    ("Retrait guichet automatique", 100, 2000),
+    ("Restaurant", 60, 450),
+    ("Pharmacie", 30, 600),
+    ("Taxi", 15, 120),
+    ("Carburant", 150, 700),
+    ("Café", 10, 60),
+    ("Vêtements", 150, 1200),
 ]
 ENTREES = [("Salaire (démo)", 4000, 15000), ("Virement reçu", 200, 3000)]
 
 # Clients proposés sur l'écran de connexion, chacun avec un scénario à tester.
 DEMO = [
     # Cas normal : l'exemple du README (solde 2 350 DH, facture d'eau 312 DH).
-    {"prenom": "Salma", "nom": "Alaoui", "ville": "Casablanca", "solde": "2350.00", "plafond": "10000.00",
-     "factures": [("Eau & Électricité (démo)", "312.00"), ("Internet (démo)", "249.00")]},
+    {
+        "prenom": "Salma",
+        "nom": "Alaoui",
+        "ville": "Casablanca",
+        "solde": "2350.00",
+        "plafond": "10000.00",
+        "factures": [("Eau & Électricité (démo)", "312.00"), ("Internet (démo)", "249.00")],
+    },
     # Solde insuffisant : sa facture Internet doit être refusée.
-    {"prenom": "Youssef", "nom": "Berrada", "ville": "Rabat", "solde": "150.00", "plafond": "5000.00",
-     "factures": [("Internet (démo)", "349.00")]},
+    {
+        "prenom": "Youssef",
+        "nom": "Berrada",
+        "ville": "Rabat",
+        "solde": "150.00",
+        "plafond": "5000.00",
+        "factures": [("Internet (démo)", "349.00")],
+    },
     # Plafond bas : un virement de plus de 2 000 DH doit être refusé.
-    {"prenom": "Nadia", "nom": "Tazi", "ville": "Marrakech", "solde": "18500.00", "plafond": "2000.00",
-     "factures": [("Mobile (démo)", "99.00")]},
+    {
+        "prenom": "Nadia",
+        "nom": "Tazi",
+        "ville": "Marrakech",
+        "solde": "18500.00",
+        "plafond": "2000.00",
+        "factures": [("Mobile (démo)", "99.00")],
+    },
 ]
 
 fake = Faker()
@@ -150,9 +235,7 @@ with psycopg.connect(
         autres = [c for c in clients if c[0] != client_id]
         for _, nom_complet, rib in random.sample(autres, random.randint(1, 3)):
             beneficiaires.append((client_id, nom_complet, rib))
-    conn.cursor().executemany(
-        "INSERT INTO beneficiaires (client_id, nom, rib) VALUES (%s, %s, %s)", beneficiaires
-    )
+    conn.cursor().executemany("INSERT INTO beneficiaires (client_id, nom, rib) VALUES (%s, %s, %s)", beneficiaires)
 
     totaux = conn.execute(
         """SELECT (SELECT count(*) FROM clients), (SELECT count(*) FROM comptes),
