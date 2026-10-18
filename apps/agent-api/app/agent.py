@@ -1,0 +1,116 @@
+"""Le graphe de Wakil : le LLM choisit l'outil, le code appelle la banque et écrit la réponse."""
+
+import os
+from typing import Literal, TypedDict
+
+import httpx
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_ollama import ChatOllama
+from langgraph.graph import END, START, StateGraph
+
+from app import banque, reponses
+
+SYSTEME = (
+    "Tu es Wakil, l'assistant de la Banque Atlas Démo (banque fictive). "
+    "Le client écrit en darija marocaine, en lettres arabes ou latines, souvent mélangée au français. "
+    "Si la demande concerne son compte, appelle l'outil adapté. "
+    "Sinon, réponds en darija que tu ne t'occupes que de la banque."
+)
+
+
+def description(nom: str, texte: str) -> dict:
+    """Ce que le LLM voit d'un outil : un nom et une description, sans aucun paramètre (surtout pas le client_id)."""
+    return {
+        "type": "function",
+        "function": {"name": nom, "description": texte, "parameters": {"type": "object", "properties": {}}},
+    }
+
+
+# Liste fermée : le LLM ne peut choisir que parmi ces outils, tous en lecture seule.
+OUTILS = {
+    "consulter_solde": (banque.solde, reponses.solde),
+    "lister_transactions": (banque.transactions, reponses.transactions),
+    "lister_factures": (banque.factures_impayees, reponses.factures),
+}
+DESCRIPTIONS = [
+    description("consulter_solde", "Donne le solde actuel du compte du client."),
+    description(
+        "lister_transactions", "Liste les dernières opérations du compte du client (dépenses, virements reçus)."
+    ),
+    description("lister_factures", "Liste les factures impayées du client (eau, électricité, internet, mobile)."),
+]
+SALUTATIONS = {"salam", "slm", "salam 3likom", "salam alaykom", "سلام", "السلام عليكم"}
+
+# Nouveauté : LangChain remplace notre appel HTTP fait à la main vers Ollama.
+llm = ChatOllama(
+    model=os.environ.get("WAKIL_MODELE", "qwen3:4b-instruct"),
+    temperature=0,
+    num_predict=100,  # assez pour un appel d'outil ; son texte libre ne nous sert pas
+).bind_tools(DESCRIPTIONS)
+
+
+class Etat(TypedDict, total=False):
+    client_id: int  # nouveauté : vient de la session, jamais du LLM
+    demande: str
+    outil: str | None
+    resultat: dict | list
+    erreur: bool
+    reponse: str
+
+
+def avant_comprendre(etat: Etat) -> Literal["saluer", "comprendre"]:
+    """Aiguillage de départ : une simple salutation ne passe pas par le LLM."""
+    texte = etat["demande"].strip().lower().rstrip("!?.، ")
+    return "saluer" if texte in SALUTATIONS else "comprendre"
+
+
+def saluer(etat: Etat) -> dict:
+    return {"reponse": reponses.SALUT}
+
+
+def comprendre(etat: Etat) -> dict:
+    """Le LLM lit la demande et choisit un outil, ou aucun."""
+    message = llm.invoke([SystemMessage(SYSTEME), HumanMessage(etat["demande"])])
+    nom = message.tool_calls[0]["name"] if message.tool_calls else None
+    # Un nom d'outil inventé par le LLM est traité comme « aucun outil ».
+    return {"outil": nom if nom in OUTILS else None}
+
+
+def apres_comprendre(etat: Etat) -> Literal["executer_outil", "refuser"]:
+    return "executer_outil" if etat["outil"] else "refuser"
+
+
+def executer_outil(etat: Etat) -> dict:
+    """Le code appelle bank-api avec le client_id de la session."""
+    appeler, _ = OUTILS[etat["outil"]]
+    try:
+        return {"resultat": appeler(etat["client_id"])}
+    except httpx.HTTPError:
+        return {"erreur": True}
+
+
+def repondre(etat: Etat) -> dict:
+    """Le code met le résultat de la banque en phrase."""
+    if etat.get("erreur"):
+        return {"reponse": reponses.ERREUR}
+    _, formuler = OUTILS[etat["outil"]]
+    return {"reponse": formuler(etat["resultat"])}
+
+
+def refuser(etat: Etat) -> dict:
+    return {"reponse": reponses.REFUS}
+
+
+graphe = StateGraph(Etat)
+graphe.add_node("saluer", saluer)
+graphe.add_node("comprendre", comprendre)
+graphe.add_node("executer_outil", executer_outil)
+graphe.add_node("repondre", repondre)
+graphe.add_node("refuser", refuser)
+graphe.add_conditional_edges(START, avant_comprendre)
+graphe.add_conditional_edges("comprendre", apres_comprendre)
+graphe.add_edge("executer_outil", "repondre")
+graphe.add_edge("saluer", END)
+graphe.add_edge("repondre", END)
+graphe.add_edge("refuser", END)
+wakil = graphe.compile()

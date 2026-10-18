@@ -1,0 +1,18 @@
+[project]
+name = "agent-api"
+version = "0.1.0"
+description = "Agent Wakil : comprend la darija et interroge la Banque Atlas Démo (données 100 % fictives)."
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "langchain-ollama>=1.1.0",
+    "langgraph>=1.2.16",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

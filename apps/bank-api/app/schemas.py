@@ -5,6 +5,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class Compte(BaseModel):
+    id: int
+    rib_masque: str  # « •••• 9114 » : le RIB complet ne sort pas de la banque
+
+
 class Solde(BaseModel):
     compte_id: int
     solde: Decimal  # Decimal, jamais float : envoyé en JSON sous forme de texte exact, « "2350.00" »

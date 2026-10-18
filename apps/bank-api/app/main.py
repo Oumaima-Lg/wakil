@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import pool
-from app.routers import comptes, factures, virements
+from app.routers import clients, comptes, factures, virements
 
 
 @asynccontextmanager
@@ -25,6 +25,7 @@ app = FastAPI(
     description="API de la banque fictive de Wakil. **Données 100 % fictives – projet de démonstration.**",
     lifespan=lifespan,
 )
+app.include_router(clients.router)
 app.include_router(comptes.router)
 app.include_router(factures.router)
 app.include_router(virements.router)
