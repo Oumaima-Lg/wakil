@@ -7,8 +7,10 @@ from zoneinfo import ZoneInfo
 MAROC = ZoneInfo("Africa/Casablanca")
 
 SALUT = "Wa 3alikom salam ! Ana Wakil, l'assistant dyal Banque Atlas Démo. Kifach n9der n3awnek ?"
+POLITESSE = "Bla jmil ! Ila bghiti chi haja okhra, ana hna."
+# Neutre : convient au hors-sujet, à ce qui n'est pas encore possible (virement, paiement) et à l'incompris.
 REFUS = (
-    "Smeh lia, ana ghir l'assistant dyal Banque Atlas Démo : n9der n3awnek f solde, l'opérations w les factures dyalek."
+    "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations w les factures dyalek."
 )
 ERREUR = "Smeh lia, kayn mochkil f la banque daba. 3awed men ba3d."
 

@@ -40,6 +40,11 @@ DESCRIPTIONS = [
     description("lister_factures", "Liste les factures impayées du client (eau, électricité, internet, mobile)."),
 ]
 SALUTATIONS = {"salam", "slm", "salam 3likom", "salam alaykom", "سلام", "السلام عليكم"}
+# Accusés de réception et remerciements : ni une demande, ni du hors-sujet.
+POLITESSES = {
+    "mzyan", "mzn", "mzyane", "مزيان", "merci", "merci bcp", "merci beaucoup", "chokran", "choukran", "شكرا",
+    "ok", "okay", "d'accord", "dacc", "safi", "tres bien", "très bien", "top", "barak allah fik", "lah yjazik bikhir",
+}  # fmt: skip
 
 # Nouveauté : LangChain remplace notre appel HTTP fait à la main vers Ollama.
 llm = ChatOllama(
@@ -58,14 +63,22 @@ class Etat(TypedDict, total=False):
     reponse: str
 
 
-def avant_comprendre(etat: Etat) -> Literal["saluer", "comprendre"]:
-    """Aiguillage de départ : une simple salutation ne passe pas par le LLM."""
+def avant_comprendre(etat: Etat) -> Literal["saluer", "remercier", "comprendre"]:
+    """Aiguillage de départ : une salutation ou une politesse seule ne passe pas par le LLM."""
     texte = etat["demande"].strip().lower().rstrip("!?.، ")
-    return "saluer" if texte in SALUTATIONS else "comprendre"
+    if texte in SALUTATIONS:
+        return "saluer"
+    if texte in POLITESSES:
+        return "remercier"
+    return "comprendre"
 
 
 def saluer(etat: Etat) -> dict:
     return {"reponse": reponses.SALUT}
+
+
+def remercier(etat: Etat) -> dict:
+    return {"reponse": reponses.POLITESSE}
 
 
 def comprendre(etat: Etat) -> dict:
@@ -103,6 +116,7 @@ def refuser(etat: Etat) -> dict:
 
 graphe = StateGraph(Etat)
 graphe.add_node("saluer", saluer)
+graphe.add_node("remercier", remercier)
 graphe.add_node("comprendre", comprendre)
 graphe.add_node("executer_outil", executer_outil)
 graphe.add_node("repondre", repondre)
@@ -111,6 +125,7 @@ graphe.add_conditional_edges(START, avant_comprendre)
 graphe.add_conditional_edges("comprendre", apres_comprendre)
 graphe.add_edge("executer_outil", "repondre")
 graphe.add_edge("saluer", END)
+graphe.add_edge("remercier", END)
 graphe.add_edge("repondre", END)
 graphe.add_edge("refuser", END)
 wakil = graphe.compile()

@@ -1,6 +1,7 @@
 """Tests du graphe sans Ollama ni bank-api : le LLM et la banque sont remplacés par des doublures (comme Mockito)."""
 
 import httpx
+import pytest
 from langchain_core.messages import AIMessage
 
 from app import agent, reponses
@@ -26,6 +27,17 @@ def test_un_simple_salut_ne_passe_pas_par_le_llm(monkeypatch):
     etat = agent.wakil.invoke({"client_id": 1, "demande": "Salam !"})
 
     assert etat["reponse"] == reponses.SALUT
+    assert faux.appels == 0
+
+
+@pytest.mark.parametrize("politesse", ["mzyan", "Mzn", "très bien", "tres bien", "Merci !", "شكرا"])
+def test_une_politesse_ne_passe_pas_par_le_llm(monkeypatch, politesse):
+    faux = FauxLLM("consulter_solde")
+    monkeypatch.setattr(agent, "llm", faux)
+
+    etat = agent.wakil.invoke({"client_id": 1, "demande": politesse})
+
+    assert etat["reponse"] == reponses.POLITESSE
     assert faux.appels == 0
 
 
