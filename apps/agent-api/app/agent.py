@@ -1,12 +1,14 @@
 """Le graphe de Wakil : le LLM choisit l'outil, le code appelle la banque et écrit la réponse."""
 
 import os
-from typing import Literal, TypedDict
+from typing import Annotated, Literal, TypedDict
 
 import httpx
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 
 from app import banque, reponses
 
@@ -54,13 +56,41 @@ llm = ChatOllama(
 ).bind_tools(DESCRIPTIONS)
 
 
+HISTORIQUE = 6  # le LLM voit les 6 derniers messages (3 échanges) : assez pour « c'est tout ? », et rapide
+
+
 class Etat(TypedDict, total=False):
-    client_id: int  # nouveauté : vient de la session, jamais du LLM
+    client_id: int  # vient de la session, jamais du LLM
+    messages: Annotated[list[AnyMessage], add_messages]  # l'historique : chaque case AJOUTE au lieu de remplacer
+    # Les champs suivants ne valent que pour le message en cours (remis à zéro par nouveau_tour).
     demande: str
     outil: str | None
-    resultat: dict | list
+    resultat: dict | list | None
     erreur: bool
     reponse: str
+
+
+def nouveau_tour(demande: str, client_id: int) -> dict:
+    """Entrée d'un nouveau message. Sans cette remise à zéro, la mémoire garderait l'erreur ou l'outil du message précédent."""
+    return {
+        "client_id": client_id,
+        "messages": [HumanMessage(demande)],
+        "demande": demande,
+        "outil": None,
+        "resultat": None,
+        "erreur": False,
+        "reponse": "",
+    }
+
+
+def config(client_id: int, conversation_id: str) -> dict:
+    """Le fil de conversation est rangé sous l'id du client : un autre client ne peut pas le relire, même en devinant l'id."""
+    return {"configurable": {"thread_id": f"{client_id}:{conversation_id}"}}
+
+
+def dire(texte: str) -> dict:
+    """La réponse de Wakil, ajoutée aussi à l'historique pour les messages suivants."""
+    return {"reponse": texte, "messages": [AIMessage(texte)]}
 
 
 def avant_comprendre(etat: Etat) -> Literal["saluer", "remercier", "comprendre"]:
@@ -74,16 +104,16 @@ def avant_comprendre(etat: Etat) -> Literal["saluer", "remercier", "comprendre"]
 
 
 def saluer(etat: Etat) -> dict:
-    return {"reponse": reponses.SALUT}
+    return dire(reponses.SALUT)
 
 
 def remercier(etat: Etat) -> dict:
-    return {"reponse": reponses.POLITESSE}
+    return dire(reponses.POLITESSE)
 
 
 def comprendre(etat: Etat) -> dict:
-    """Le LLM lit la demande et choisit un outil, ou aucun."""
-    message = llm.invoke([SystemMessage(SYSTEME), HumanMessage(etat["demande"])])
+    """Le LLM lit la demande, avec les derniers messages pour le contexte, et choisit un outil ou aucun."""
+    message = llm.invoke([SystemMessage(SYSTEME), *etat["messages"][-HISTORIQUE:]])
     nom = message.tool_calls[0]["name"] if message.tool_calls else None
     # Un nom d'outil inventé par le LLM est traité comme « aucun outil ».
     return {"outil": nom if nom in OUTILS else None}
@@ -105,13 +135,13 @@ def executer_outil(etat: Etat) -> dict:
 def repondre(etat: Etat) -> dict:
     """Le code met le résultat de la banque en phrase."""
     if etat.get("erreur"):
-        return {"reponse": reponses.ERREUR}
+        return dire(reponses.ERREUR)
     _, formuler = OUTILS[etat["outil"]]
-    return {"reponse": formuler(etat["resultat"])}
+    return dire(formuler(etat["resultat"]))
 
 
 def refuser(etat: Etat) -> dict:
-    return {"reponse": reponses.REFUS}
+    return dire(reponses.REFUS)
 
 
 graphe = StateGraph(Etat)
@@ -128,4 +158,5 @@ graphe.add_edge("saluer", END)
 graphe.add_edge("remercier", END)
 graphe.add_edge("repondre", END)
 graphe.add_edge("refuser", END)
-wakil = graphe.compile()
+# Le checkpointer sauvegarde l'état après chaque case (en mémoire vive ; dans PostgreSQL à l'étape S3).
+wakil = graphe.compile(checkpointer=InMemorySaver())

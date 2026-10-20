@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Agent Wakil : comprend la darija et interroge la Banque Atlas Démo (données 100 % fictives)."
 requires-python = ">=3.14"
 dependencies = [
+    "fastapi[standard]>=0.146.0",
     "httpx>=0.28.1",
     "langchain-ollama>=1.1.0",
     "langgraph>=1.2.16",
@@ -11,8 +12,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.1",
     "pytest>=9.1.1",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.fastapi]
+entrypoint = "app.main:app"
