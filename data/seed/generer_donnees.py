@@ -24,7 +24,7 @@ MAROC = ZoneInfo("Africa/Casablanca")
 CODE_BANQUE = "000"  # tous les RIB commencent par 000 : aucun ne peut ressembler à celui d'une vraie banque
 
 # Prénoms et noms courants, mélangés au hasard : les combinaisons ne visent aucune personne réelle.
-PRENOMS = [
+PRENOMS_HOMMES = [
     "Mohamed",
     "Youssef",
     "Amine",
@@ -40,6 +40,8 @@ PRENOMS = [
     "Said",
     "Khalid",
     "Adil",
+]
+PRENOMS_FEMMES = [
     "Fatima",
     "Khadija",
     "Salma",
@@ -56,6 +58,8 @@ PRENOMS = [
     "Asmae",
     "Ghita",
 ]
+# Même ordre qu'avant l'ajout de la civilité : les tirages au hasard, donc les données générées, ne changent pas.
+PRENOMS = PRENOMS_HOMMES + PRENOMS_FEMMES
 NOMS = [
     "Alaoui",
     "Benali",
@@ -124,6 +128,7 @@ ENTREES = [("Salaire (démo)", 4000, 15000), ("Virement reçu", 200, 3000)]
 DEMO = [
     # Cas normal : l'exemple du README (solde 2 350 DH, facture d'eau 312 DH).
     {
+        "civilite": "madame",
         "prenom": "Salma",
         "nom": "Alaoui",
         "ville": "Casablanca",
@@ -133,6 +138,7 @@ DEMO = [
     },
     # Solde insuffisant : sa facture Internet doit être refusée.
     {
+        "civilite": "monsieur",
         "prenom": "Youssef",
         "nom": "Berrada",
         "ville": "Rabat",
@@ -142,6 +148,7 @@ DEMO = [
     },
     # Plafond bas : un virement de plus de 2 000 DH doit être refusé.
     {
+        "civilite": "madame",
         "prenom": "Nadia",
         "nom": "Tazi",
         "ville": "Marrakech",
@@ -163,8 +170,11 @@ def montant(minimum, maximum):
 
 def client_aleatoire():
     fournisseurs = random.sample(list(FOURNISSEURS), random.randint(1, 3))
+    prenom = random.choice(PRENOMS)
     return {
-        "prenom": random.choice(PRENOMS),
+        # Déduite du prénom, sans nouveau tirage : les autres données restent identiques.
+        "civilite": "monsieur" if prenom in PRENOMS_HOMMES else "madame",
+        "prenom": prenom,
         "nom": random.choice(NOMS),
         "ville": random.choice(VILLES),
         "solde": montant(50, 25000),
@@ -176,8 +186,8 @@ def client_aleatoire():
 def creer_client(conn, c):
     """Crée le client, son compte, ses transactions et ses factures. Renvoie (client_id, nom complet, rib)."""
     client_id = conn.execute(
-        "INSERT INTO clients (prenom, nom, ville) VALUES (%s, %s, %s) RETURNING id",
-        (c["prenom"], c["nom"], c["ville"]),
+        "INSERT INTO clients (civilite, prenom, nom, ville) VALUES (%s, %s, %s, %s) RETURNING id",
+        (c["civilite"], c["prenom"], c["nom"], c["ville"]),
     ).fetchone()[0]
 
     rib = CODE_BANQUE + fake.unique.numerify("#" * 21)

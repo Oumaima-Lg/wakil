@@ -2,11 +2,13 @@
 -- Exécuté une seule fois par PostgreSQL, à la création du volume (docker compose up).
 
 -- Pas de téléphone : aucune fonctionnalité n'en a besoin (minimisation des données, loi 09-08).
+-- La civilité a trois usages : l'illustration de la carte, « Bonjour Madame », l'accord de la darija (khellsi / khelless).
 CREATE TABLE clients (
-    id      INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    prenom  TEXT NOT NULL,
-    nom     TEXT NOT NULL,
-    ville   TEXT NOT NULL
+    id        INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    civilite  TEXT NOT NULL CHECK (civilite IN ('madame', 'monsieur')),
+    prenom    TEXT NOT NULL,
+    nom       TEXT NOT NULL,
+    ville     TEXT NOT NULL
 );
 
 CREATE TABLE comptes (
