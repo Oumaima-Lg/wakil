@@ -3,9 +3,30 @@
 import uuid
 
 import pytest
+from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
 from app import agent
+from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def cle_de_test(monkeypatch):
+    """Une clé de signature de test : la vraie reste dans .env."""
+    monkeypatch.setenv("WAKIL_JWT_SECRET", "cle-de-test-de-wakil-assez-longue-pour-hs256")
+
+
+@pytest.fixture
+def api():
+    """Un client HTTP neuf pour chaque test : ses cookies ne passent pas d'un test à l'autre."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def salma(api):
+    """Un client HTTP déjà connecté en tant que Salma (le cookie de session est posé)."""
+    api.post("/session", json={"client_id": 1})
+    return api
 
 
 class FauxLLM:
