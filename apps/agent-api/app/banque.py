@@ -26,6 +26,16 @@ def _compte_principal(client_id: int) -> int:
     return _get(client_id, f"/clients/{client_id}/comptes")[0]["id"]
 
 
+def profil(client_id: int) -> dict:
+    return _get(client_id, f"/clients/{client_id}")
+
+
+def compte(client_id: int) -> dict:
+    """Le compte du client (id, RIB masqué, plafond de virement) avec son solde."""
+    infos = _get(client_id, f"/clients/{client_id}/comptes")[0]
+    return {**infos, "solde": _get(client_id, f"/comptes/{infos['id']}/solde")["solde"]}
+
+
 def solde(client_id: int) -> dict:
     return _get(client_id, f"/comptes/{_compte_principal(client_id)}/solde")
 

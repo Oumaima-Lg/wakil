@@ -6,14 +6,36 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
-from app import agent
+from app import agent, banque
 from app.main import app
+
+PROFILS = {
+    1: ("madame", "Salma", "Alaoui", "Casablanca"),
+    2: ("monsieur", "Youssef", "Berrada", "Rabat"),
+    3: ("madame", "Nadia", "Tazi", "Marrakech"),
+}
 
 
 @pytest.fixture(autouse=True)
 def cle_de_test(monkeypatch):
     """Une clé de signature de test : la vraie reste dans .env."""
     monkeypatch.setenv("WAKIL_JWT_SECRET", "cle-de-test-de-wakil-assez-longue-pour-hs256")
+
+
+@pytest.fixture(autouse=True)
+def fausse_banque(monkeypatch):
+    """bank-api ne tourne pas pendant les tests : profil, compte et factures des clients de démo sont simulés."""
+
+    def profil(client_id):
+        civilite, prenom, nom, ville = PROFILS[client_id]
+        return {"id": client_id, "civilite": civilite, "prenom": prenom, "nom": nom, "ville": ville}
+
+    def compte(client_id):
+        return {"id": client_id, "rib_masque": "•••• 9114", "plafond_virement": "10000.00", "solde": "2350.00"}
+
+    monkeypatch.setattr(banque, "profil", profil)
+    monkeypatch.setattr(banque, "compte", compte)
+    monkeypatch.setattr(banque, "factures_impayees", lambda client_id: [{"montant": "312.00"}, {"montant": "249.00"}])
 
 
 @pytest.fixture

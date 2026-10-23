@@ -5,9 +5,10 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import jwt
 
-from app import agent, reponses
+from app import agent, banque, reponses
 from app.session import COOKIE, creer_jeton
 
 MESSAGE = {"conversation_id": "essai", "texte": "chhal bqa f compte dyali ?"}
@@ -18,12 +19,39 @@ def b64(donnees: dict) -> str:
     return base64.urlsafe_b64encode(json.dumps(donnees).encode()).rstrip(b"=").decode()
 
 
-def test_les_clients_de_demo_sont_proposes(api):
-    assert api.get("/clients-demo").json() == [
-        {"id": 1, "prenom": "Salma"},
-        {"id": 2, "prenom": "Youssef"},
-        {"id": 3, "prenom": "Nadia"},
-    ]
+def test_les_clients_de_demo_sont_proposes_avec_un_resume_de_leur_compte(api):
+    clients = api.get("/clients-demo").json()
+
+    assert [c["prenom"] for c in clients] == ["Salma", "Youssef", "Nadia"]
+    assert clients[0] == {
+        "id": 1,
+        "civilite": "madame",
+        "prenom": "Salma",
+        "nom": "Alaoui",
+        "ville": "Casablanca",
+        "scenario": "Cas normal",
+        "solde": "2350.00",
+        "plafond_virement": "10000.00",
+        "factures_a_payer": 2,
+        "total_a_payer": "561.00",
+    }
+
+
+def test_banque_injoignable_donne_une_erreur_503(api, monkeypatch):
+    def banque_en_panne(client_id):
+        raise httpx.ConnectError("bank-api ne répond pas")
+
+    monkeypatch.setattr(banque, "profil", banque_en_panne)
+
+    assert api.get("/clients-demo").status_code == 503
+
+
+def test_moi_renvoie_le_profil_du_client_connecte(salma):
+    assert salma.get("/moi").json()["prenom"] == "Salma"
+
+
+def test_moi_sans_session_refuse(api):
+    assert api.get("/moi").status_code == 401
 
 
 def test_ouvrir_une_session_pose_un_cookie_que_le_javascript_ne_peut_pas_lire(api):

@@ -4,11 +4,15 @@ Lancer (depuis apps/agent-api, bank-api et Ollama démarrés) : uv run --env-fil
 """
 
 import json
+from contextlib import contextmanager
+from decimal import Decimal
 
+import httpx
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app import banque
 from app.agent import config, nouveau_tour, wakil
 from app.session import CLIENTS_DEMO, COOKIE, COOKIE_SECURISE, DUREE, ClientConnecte, creer_jeton
 
@@ -27,10 +31,40 @@ class Message(BaseModel):
     texte: str = Field(min_length=1, max_length=500)  # limite la taille de ce qu'on envoie au LLM
 
 
+@contextmanager
+def banque_joignable():
+    """Si bank-api ne répond pas, le front reçoit un 503 clair au lieu d'une erreur 500."""
+    try:
+        yield
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Banque indisponible") from None
+
+
+def resume_client(client_id: int, scenario: str) -> dict:
+    compte = banque.compte(client_id)
+    factures = banque.factures_impayees(client_id)
+    return {
+        **banque.profil(client_id),
+        "scenario": scenario,
+        "solde": compte["solde"],
+        "plafond_virement": compte["plafond_virement"],
+        "factures_a_payer": len(factures),
+        "total_a_payer": str(sum((Decimal(f["montant"]) for f in factures), Decimal("0.00"))),
+    }
+
+
 @app.get("/clients-demo")
 def clients_demo() -> list[dict]:
-    """Les clients proposés sur l'écran d'accueil."""
-    return [{"id": client_id, "prenom": prenom} for client_id, prenom in CLIENTS_DEMO.items()]
+    """Les clients proposés sur l'écran d'accueil, avec un résumé de leur compte lu en direct dans la banque."""
+    with banque_joignable():
+        return [resume_client(client_id, scenario) for client_id, scenario in CLIENTS_DEMO.items()]
+
+
+@app.get("/moi")
+def moi(client_id: ClientConnecte) -> dict:
+    """Le profil du client connecté (celui du jeton de session)."""
+    with banque_joignable():
+        return banque.profil(client_id)
 
 
 @app.post("/session")
@@ -38,6 +72,8 @@ def ouvrir_session(demande: DemandeSession, response: Response) -> dict:
     """Connexion à un client de démo : pose un cookie qui contient le jeton signé."""
     if demande.client_id not in CLIENTS_DEMO:
         raise HTTPException(status_code=404, detail="Client de démo inconnu")
+    with banque_joignable():
+        prenom = banque.profil(demande.client_id)["prenom"]
     response.set_cookie(
         COOKIE,
         creer_jeton(demande.client_id),
@@ -46,7 +82,7 @@ def ouvrir_session(demande: DemandeSession, response: Response) -> dict:
         samesite="lax",  # le cookie n'est pas envoyé par un POST venant d'un autre site (protection CSRF)
         secure=COOKIE_SECURISE,
     )
-    return {"client_id": demande.client_id, "prenom": CLIENTS_DEMO[demande.client_id]}
+    return {"client_id": demande.client_id, "prenom": prenom}
 
 
 @app.delete("/session", status_code=204)

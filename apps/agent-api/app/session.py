@@ -17,7 +17,7 @@ ALGORITHME = "HS256"
 COOKIE_SECURISE = os.environ.get("WAKIL_COOKIE_SECURISE", "0") == "1"
 
 # Les seuls clients qu'on peut choisir sur l'écran d'accueil (données 100 % fictives).
-CLIENTS_DEMO = {1: "Salma", 2: "Youssef", 3: "Nadia"}
+CLIENTS_DEMO = {1: "Cas normal", 2: "Solde insuffisant", 3: "Plafond de virement bas"}  # id → scénario testé
 
 
 def _cle() -> str:

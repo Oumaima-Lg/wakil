@@ -5,9 +5,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class Client(BaseModel):
+    id: int
+    civilite: Literal["madame", "monsieur"]
+    prenom: str
+    nom: str
+    ville: str
+
+
 class Compte(BaseModel):
     id: int
     rib_masque: str  # « •••• 9114 » : le RIB complet ne sort pas de la banque
+    plafond_virement: Decimal
 
 
 class Solde(BaseModel):

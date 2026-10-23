@@ -8,8 +8,10 @@ from app.db import Connexion
 def client_connecte(x_client_id: Annotated[int, Header()]) -> int:
     """Identifiant du client connecté, lu dans l'en-tête HTTP « X-Client-Id ».
 
-    Provisoire (S1) : cet en-tête est posé par le code de l'agent, jamais par le LLM.
-    Il sera remplacé par la vérification d'un jeton signé (JWT).
+    bank-api est un service interne : seul agent-api l'appelle. agent-api a déjà vérifié le jeton de session (JWT)
+    du navigateur, puis pose cet en-tête lui-même (jamais le LLM). bank-api le croit donc sur parole.
+    À durcir : S6, bank-api joignable seulement depuis l'intérieur (ingress interne) ; S5, bank-api vérifie
+    elle-même un jeton court signé par agent-api (défense en profondeur, mesurée dans le rapport de sécurité).
     """
     return x_client_id
 
