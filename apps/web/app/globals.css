@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Couleurs de la maquette validée (artefact « Wakil – maquettes ») : fond gris anthracite, accent vert-citron. */
+@theme {
+  --color-fond: #1c1d20;
+  --color-menu: #191a1d;
+  --color-surface: #25272b;
+  --color-surface-2: #2c2e33;
+  --color-bordure: #34373c;
+  --color-bordure-forte: #3b3e43;
+  --color-accent: #d7f25c;
+  --color-sur-accent: #16170f; /* texte posé sur le vert-citron */
+  --color-texte: #f1f2ee;
+  --color-texte-2: #d3d6cf;
+  --color-attenue: #b4b8af;
+  --color-faible: #8e9389;
+  --color-surligne: #2d3022;
+  --color-note: #24261d;
+  --color-note-bordure: #3b4026;
+  --color-note-texte: #e2edb4;
+  --color-alerte: #f0b44c;
+
+  /* --police-* sont créées par next/font dans layout.tsx */
+  --font-sans: var(--police-poppins), var(--police-arabe), system-ui, sans-serif;
+  --font-arabe: var(--police-arabe), sans-serif;
+}
+
+body {
+  background: var(--color-fond);
+  color: var(--color-texte);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
