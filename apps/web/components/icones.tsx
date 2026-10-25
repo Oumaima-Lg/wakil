@@ -1,5 +1,5 @@
 // Icônes au trait de la maquette. Décoratives : aria-hidden, le texte à côté porte le sens.
-type Props = { taille?: number; className?: string };
+type Props = { taille?: number; className?: string; style?: React.CSSProperties };
 
 function Svg({ taille = 20, className, children, ...reste }: Props & React.SVGProps<SVGSVGElement>) {
   return (
@@ -192,6 +192,38 @@ export function Attention(props: Props) {
     <Svg strokeWidth={1.8} {...props}>
       <path d="M12 4l9 16H3z" />
       <path d="M12 10v4M12 17v.01" />
+    </Svg>
+  );
+}
+
+export function TroisTraits(props: Props) {
+  return (
+    <Svg strokeWidth={1.8} {...props}>
+      <path d="M4 7h16M4 12h16M4 17h11" />
+    </Svg>
+  );
+}
+
+export function Croix(props: Props) {
+  return (
+    <Svg strokeWidth={1.8} {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </Svg>
+  );
+}
+
+export function ChevronBas(props: Props) {
+  return (
+    <Svg strokeWidth={1.8} {...props}>
+      <path d="M6 9l6 6 6-6" />
+    </Svg>
+  );
+}
+
+export function Sortie(props: Props) {
+  return (
+    <Svg strokeWidth={1.7} {...props}>
+      <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l4-4-4-4M14 12H4" />
     </Svg>
   );
 }

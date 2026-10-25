@@ -26,23 +26,23 @@ export default function VueEnsemble() {
             ouvre ou ferme le menu et Wakil. Il faut 568 px pour la carte (340) et le solde (200) côte à côte. */}
         <section
           aria-label="Compte courant"
-          className="@container min-w-0 flex-[2_1_560px] rounded-3xl border-[1.5px] border-bordure bg-surface p-6"
+          className="@container min-w-0 flex-[2_1_560px] rounded-[22px] border-[1.5px] border-bordure bg-surface p-4 sm:rounded-3xl sm:p-6"
         >
           <div className="flex flex-wrap items-center justify-center gap-7">
-            {/* Entre 500 et 568 px : la carte passe à 80 % pour rester à côté du solde. En dessous : tout s'empile, centré. */}
-            <div className="@min-[31.25rem]:@max-[35.5rem]:[zoom:0.8]">
-              <Carte
-                titulaire={`${profil.prenom} ${profil.nom}`}
-                fin={compte.rib_masque.slice(-4)}
-                civilite={profil.civilite}
-              />
-            </div>
+            {/* Entre 500 et 568 px : la carte passe à 272 px pour rester à côté du solde. En dessous : tout s'empile,
+                centré, et la carte rétrécit si l'écran fait moins de 340 px (max-w-full). */}
+            <Carte
+              titulaire={`${profil.prenom} ${profil.nom}`}
+              fin={compte.rib_masque.slice(-4)}
+              civilite={profil.civilite}
+              className="w-[340px] max-w-full @min-[31.25rem]:@max-[35.5rem]:w-[272px]"
+            />
             <div className="flex min-w-0 flex-[1_1_200px] flex-col gap-4.5 @max-[31.25rem]:text-center">
               <div className="flex flex-col gap-1">
                 <p className="text-[13px] font-medium tracking-[0.08em] text-attenue uppercase">
                   Compte courant · solde disponible
                 </p>
-                <p className="text-[40px] font-semibold tracking-[0.01em] text-accent tabular-nums">
+                <p className="text-[34px] font-semibold tracking-[0.01em] text-accent tabular-nums sm:text-[40px]">
                   {dh(compte.solde)}
                 </p>
               </div>
@@ -62,12 +62,12 @@ export default function VueEnsemble() {
 
         <section
           aria-labelledby="titre-a-payer"
-          className="flex min-w-0 flex-[1_1_240px] flex-col gap-3 rounded-3xl border border-bordure bg-surface p-6"
+          className="flex min-w-0 flex-[1_1_240px] flex-col gap-3 rounded-[22px] border border-bordure bg-surface p-4.5 sm:rounded-3xl sm:p-6"
         >
           <h2 id="titre-a-payer" className="text-[13px] font-medium tracking-[0.08em] text-attenue uppercase">
             À payer
           </h2>
-          <p className="text-[32px] font-semibold tabular-nums">{dh(somme(impayees.map((f) => f.montant)))}</p>
+          <p className="text-[26px] font-semibold tabular-nums sm:text-[32px]">{dh(somme(impayees.map((f) => f.montant)))}</p>
           <p className="text-sm text-attenue">
             {impayees.length === 0
               ? "Aucune facture en attente"
@@ -165,10 +165,13 @@ export default function VueEnsemble() {
             {resume.categories.map((c) => (
               <li
                 key={c.libelle}
-                className="grid grid-cols-[minmax(110px,220px)_minmax(0,1fr)_auto] items-center gap-4 text-[14.5px]"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 text-[14.5px] sm:grid-cols-[minmax(110px,220px)_minmax(0,1fr)_auto]"
               >
                 <span>{c.libelle}</span>
-                <span aria-hidden="true" className="h-2.5 overflow-hidden rounded-full bg-bordure">
+                <span
+                  aria-hidden="true"
+                  className="order-last col-span-2 h-2 overflow-hidden rounded-full bg-bordure sm:order-none sm:col-span-1 sm:h-2.5"
+                >
                   <span
                     className="block h-full rounded-full bg-accent"
                     style={{ width: `${Math.max(2, Math.round((c.total / plusGrande) * 100))}%` }}

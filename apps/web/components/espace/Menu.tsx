@@ -2,12 +2,25 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-import { CarteBancaire, Deplier, Etoile, Grille, Liste, Montagnes, Personnes, Recu, Replier } from "@/components/icones";
+import {
+  CarteBancaire,
+  Croix,
+  Deplier,
+  Etoile,
+  Grille,
+  Liste,
+  Montagnes,
+  Personnes,
+  Recu,
+  Replier,
+  Sortie,
+} from "@/components/icones";
 import { initiales } from "@/lib/format";
 import type { Espace } from "@/lib/types";
 
-const ENTREES = [
+export const ENTREES = [
   { href: "/banque", libelle: "Vue d'ensemble", Icone: Grille },
   { href: "/banque/operations", libelle: "Opérations", Icone: Liste },
   { href: "/banque/factures", libelle: "Factures", Icone: Recu },
@@ -15,24 +28,30 @@ const ENTREES = [
   { href: "/banque/carte", libelle: "Ma carte", Icone: CarteBancaire },
 ];
 
-type Props = { espace: Espace; ouvert: boolean; basculer: () => void };
+export const nombreAPayer = (espace: Espace) => espace.factures.filter((f) => f.statut === "impayee").length;
 
-/** Le menu de gauche : ouvert (icônes + libellés) ou replié en colonne d'icônes. */
-export function Menu({ espace, ouvert, basculer }: Props) {
-  const chemin = usePathname(); // la page affichée, pour mettre son entrée en surbrillance
+/** La déconnexion, commune au menu de l'ordinateur et à celui du téléphone. */
+function useDeconnexion() {
   const router = useRouter();
-  const aPayer = espace.factures.filter((f) => f.statut === "impayee").length;
-  const { prenom, nom } = espace.profil;
-
-  async function seDeconnecter() {
+  return async () => {
     await fetch("/api/session", { method: "DELETE" });
     router.replace("/");
-  }
+  };
+}
+
+type Props = { espace: Espace; ouvert: boolean; basculer: () => void };
+
+/** Le menu de gauche sur grand écran : ouvert (icônes + libellés) ou replié en colonne d'icônes. */
+export function Menu({ espace, ouvert, basculer }: Props) {
+  const chemin = usePathname(); // la page affichée, pour mettre son entrée en surbrillance
+  const seDeconnecter = useDeconnexion();
+  const aPayer = nombreAPayer(espace);
+  const { prenom, nom } = espace.profil;
 
   return (
     <nav
       aria-label="Menu de la banque"
-      className={`flex flex-none flex-col gap-7 overflow-y-auto border-r border-[#2e3034] bg-menu py-6 ${ouvert ? "w-62 px-4" : "w-19 items-center"}`}
+      className={`hidden flex-none flex-col gap-7 overflow-y-auto border-r border-[#2e3034] bg-menu py-6 lg:flex ${ouvert ? "w-62 px-4" : "w-19 items-center"}`}
     >
       <div className={`flex items-center gap-2 ${ouvert ? "justify-between" : "flex-col"}`}>
         <Link href="/" className="flex items-center gap-2.5 px-1.5 text-accent" aria-label="Banque Atlas Démo, accueil">
@@ -79,15 +98,7 @@ export function Menu({ espace, ouvert, basculer }: Props) {
       </ul>
 
       <div className="mt-auto flex flex-col gap-3.5">
-        {ouvert && (
-          <div className="flex flex-col gap-2.5 rounded-[18px] border border-note-bordure bg-note p-4">
-            <p className="flex items-center gap-2 text-sm font-semibold">
-              <Etoile taille={18} className="text-accent" />
-              Wakil, votre assistant
-            </p>
-            <p className="text-[13px] leading-normal text-attenue">Posez vos questions et faites vos opérations en darija.</p>
-          </div>
-        )}
+        {ouvert && <NoteWakil />}
         <div className={`flex items-center gap-2.5 ${ouvert ? "px-1.5" : "flex-col"}`}>
           <span
             aria-hidden="true"
@@ -112,5 +123,116 @@ export function Menu({ espace, ouvert, basculer }: Props) {
         </div>
       </div>
     </nav>
+  );
+}
+
+function NoteWakil() {
+  return (
+    <div className="flex flex-col gap-2.5 rounded-[18px] border border-note-bordure bg-note p-4">
+      <p className="flex items-center gap-2 text-sm font-semibold">
+        <Etoile taille={18} className="text-accent" />
+        Wakil, votre assistant
+      </p>
+      <p className="text-[13px] leading-normal text-attenue">Posez vos questions et faites vos opérations en darija.</p>
+    </div>
+  );
+}
+
+/** Le menu du téléphone : un tiroir qui glisse depuis la gauche, par-dessus la page assombrie. */
+export function MenuMobile({ espace, ouvert, fermer }: { espace: Espace; ouvert: boolean; fermer: () => void }) {
+  const chemin = usePathname();
+  const seDeconnecter = useDeconnexion();
+  const aPayer = nombreAPayer(espace);
+  const { prenom, nom, ville } = espace.profil;
+
+  // Échap ferme le tiroir, comme toute fenêtre posée par-dessus la page.
+  useEffect(() => {
+    if (!ouvert) return;
+    const touche = (evenement: KeyboardEvent) => evenement.key === "Escape" && fermer();
+    document.addEventListener("keydown", touche);
+    return () => document.removeEventListener("keydown", touche);
+  }, [ouvert, fermer]);
+
+  if (!ouvert) return null;
+  return (
+    <div className="lg:hidden">
+      <div aria-hidden="true" onClick={fermer} className="fixed inset-0 z-30 bg-black/60" />
+      <nav
+        aria-label="Menu de la banque"
+        className="fixed inset-y-0 left-0 z-40 flex w-75 max-w-[85vw] flex-col gap-6 overflow-y-auto border-r border-[#2e3034] bg-menu px-4 pt-4.5 pb-5.5 shadow-[20px_0_60px_-20px_#000]"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 pl-1 text-accent">
+            <Montagnes taille={26} />
+            <span className="flex flex-col leading-tight">
+              <span className="text-[15px] font-semibold tracking-wide text-texte">Banque Atlas</span>
+              <span className="text-[10px] font-medium tracking-[0.22em] uppercase">Démo</span>
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={fermer}
+            aria-label="Fermer le menu"
+            autoFocus
+            className="flex size-11 cursor-pointer items-center justify-center rounded-xl border border-bordure text-texte-2"
+          >
+            <Croix taille={18} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-[18px] border border-bordure bg-surface p-3.5">
+          <span
+            aria-hidden="true"
+            className="flex size-11 flex-none items-center justify-center rounded-full border-[1.5px] border-accent text-sm font-semibold text-accent"
+          >
+            {initiales(prenom, nom)}
+          </span>
+          <div className="flex flex-col">
+            <span className="text-[15px] font-semibold">
+              {prenom} {nom}
+            </span>
+            <span className="text-[12.5px] text-attenue">Client de démo · {ville}</span>
+          </div>
+        </div>
+
+        <ul className="flex flex-col gap-1">
+          {ENTREES.map(({ href, libelle, Icone }) => {
+            const actif = chemin === href;
+            return (
+              <li key={href}>
+                <Link
+                  href={href}
+                  onClick={fermer}
+                  aria-current={actif ? "page" : undefined}
+                  className={`flex min-h-12 items-center gap-3 rounded-xl px-3 text-[15px] ${actif ? "bg-surligne font-medium text-accent" : "text-texte-2"}`}
+                >
+                  <Icone taille={20} />
+                  {libelle}
+                  {href === "/banque/factures" && aPayer > 0 && (
+                    <span className="ml-auto min-w-[22px] rounded-full bg-bordure-forte px-1.75 text-center text-xs font-semibold text-texte">
+                      {aPayer}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+
+        <NoteWakil />
+
+        <div className="mt-auto flex flex-col gap-2.5">
+          <button
+            type="button"
+            onClick={seDeconnecter}
+            className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-bordure px-3 text-[15px]"
+          >
+            <Sortie taille={20} />
+            Se déconnecter
+          </button>
+          <p className="px-1 text-[11.5px] text-faible">Données 100 % fictives – projet de démonstration.</p>
+        </div>
+      </nav>
+    </div>
   );
 }

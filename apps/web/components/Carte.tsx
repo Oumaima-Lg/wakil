@@ -5,24 +5,33 @@ type Props = {
   fin: string; // 4 derniers chiffres du compte
   civilite: "madame" | "monsieur";
   expiration?: string;
+  className?: string; // la largeur : 340 px par défaut, moins si la place manque
 };
 
+/**
+ * Mesure de la maquette (dessinée sur 340 px de large), mise à l'échelle de la largeur réelle de la carte :
+ * u(18) vaut 18 px quand la carte fait 340 px, 9 px quand elle en fait 170. 100cqw = la largeur de la carte (@container).
+ */
+const u = (px: number) => `calc(${px} * 100cqw / 340)`;
+
 /** La carte de démo, aux couleurs de l'app (maquette 4B) : « DÉMO » à la place d'un vrai réseau de paiement. */
-export function Carte({ titulaire, fin, civilite, expiration = "10/29" }: Props) {
+export function Carte({ titulaire, fin, civilite, expiration = "10/29", className = "w-[340px] max-w-full" }: Props) {
   return (
     <div
       role="img"
       aria-label={`Carte bancaire de démo de ${titulaire}, se terminant par ${fin}`}
-      className="relative h-[214px] w-[340px] max-w-full flex-none overflow-hidden rounded-[18px] border border-[#4a4f2c] bg-[#202217] shadow-[0_24px_60px_-26px_#000000cc]"
+      className={`@container relative aspect-[340/214] flex-none overflow-hidden rounded-[5.3%/8.4%] border border-[#4a4f2c] bg-[#202217] shadow-[0_24px_60px_-26px_#000000cc] ${className}`}
     >
       {civilite === "madame" ? <Femme /> : <Homme />}
 
-      <div className="absolute top-[18px] left-5 flex items-center gap-2">
-        <Montagnes taille={24} className="text-accent" />
-        <span className="text-[13px] font-semibold tracking-wide">Banque Atlas</span>
+      <div className="absolute flex items-center" style={{ top: u(18), left: u(20), gap: u(8) }}>
+        <Montagnes className="text-accent" style={{ width: u(24), height: u(24) }} />
+        <span className="font-semibold tracking-wide" style={{ fontSize: u(13) }}>
+          Banque Atlas
+        </span>
       </div>
-      <div className="absolute top-[70px] left-5 flex items-center gap-3" aria-hidden="true">
-        <svg width="42" height="32" viewBox="0 0 42 32">
+      <div className="absolute flex items-center" style={{ top: u(70), left: u(20), gap: u(12) }} aria-hidden="true">
+        <svg viewBox="0 0 42 32" style={{ width: u(42), height: u(32) }}>
           <rect x="0.75" y="0.75" width="40.5" height="30.5" rx="6" fill="#4A4F2C" stroke="#D7F25C" strokeOpacity="0.7" strokeWidth="1.5" />
           <path
             d="M14 1v30M28 1v30M1 11h13M28 11h13M1 21h13M28 21h13M14 16h14"
@@ -32,33 +41,46 @@ export function Carte({ titulaire, fin, civilite, expiration = "10/29" }: Props)
             fill="none"
           />
         </svg>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D3D6CF" strokeWidth="1.6" strokeLinecap="round">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#D3D6CF" strokeWidth="1.6" strokeLinecap="round" style={{ width: u(22), height: u(22) }}>
           <path d="M8 8.5c1.2 2.2 1.2 4.8 0 7M11.5 6.5c2 3.4 2 7.6 0 11M15 4.5c2.8 4.6 2.8 10.4 0 15" />
         </svg>
       </div>
-      <p className="absolute top-[122px] left-5 text-base tracking-[0.14em] tabular-nums">•••• •••• •••• {fin}</p>
-      <div className="absolute bottom-4 left-5 flex gap-[22px]">
+      <p className="absolute tracking-[0.14em] tabular-nums" style={{ top: u(122), left: u(20), fontSize: u(16) }}>
+        •••• •••• •••• {fin}
+      </p>
+      <div className="absolute flex" style={{ bottom: u(16), left: u(20), gap: u(22) }}>
         <div className="flex flex-col">
-          <span className="text-[9.5px] tracking-[0.16em] text-attenue uppercase">Titulaire</span>
-          <span className="text-[12.5px] font-medium tracking-[0.1em] uppercase">{titulaire}</span>
+          <span className="tracking-[0.16em] text-attenue uppercase" style={{ fontSize: u(9.5) }}>
+            Titulaire
+          </span>
+          <span className="font-medium tracking-[0.1em] uppercase" style={{ fontSize: u(12.5) }}>
+            {titulaire}
+          </span>
         </div>
         <div className="flex flex-col">
-          <span className="text-[9.5px] tracking-[0.16em] text-attenue uppercase">Expire</span>
-          <span className="text-[12.5px] font-medium tracking-[0.1em]">{expiration}</span>
+          <span className="tracking-[0.16em] text-attenue uppercase" style={{ fontSize: u(9.5) }}>
+            Expire
+          </span>
+          <span className="font-medium tracking-[0.1em]" style={{ fontSize: u(12.5) }}>
+            {expiration}
+          </span>
         </div>
       </div>
-      <span className="absolute top-4 right-4 rounded-md bg-sur-accent px-2 py-0.5 text-[11px] font-bold tracking-[0.14em] text-accent italic">
+      <span
+        className="absolute rounded-md bg-sur-accent font-bold tracking-[0.14em] text-accent italic"
+        style={{ top: u(16), right: u(16), padding: `${u(2)} ${u(8)}`, fontSize: u(11) }}
+      >
         DÉMO
       </span>
     </div>
   );
 }
 
-const STYLE_PERSONNAGE = "absolute -right-2.5 -bottom-3.5 h-48 w-40";
+const PERSONNAGE = { right: u(-10), bottom: u(-14), width: u(160), height: u(192) };
 
 function Femme() {
   return (
-    <svg viewBox="0 0 200 240" className={STYLE_PERSONNAGE} aria-hidden="true">
+    <svg viewBox="0 0 200 240" className="absolute" style={PERSONNAGE} aria-hidden="true">
       <circle cx="100" cy="118" r="92" fill="#D7F25C" fillOpacity="0.14" />
       <path d="M60 96 C56 52 78 30 102 30 C128 30 148 54 144 96 C143 116 148 132 156 146 L46 146 C54 132 61 116 60 96 Z" fill="#2B1F1B" />
       <rect x="89" y="112" width="24" height="30" rx="6" fill="#A86C48" />
@@ -80,7 +102,7 @@ function Femme() {
 
 function Homme() {
   return (
-    <svg viewBox="0 0 200 240" className={STYLE_PERSONNAGE} aria-hidden="true">
+    <svg viewBox="0 0 200 240" className="absolute" style={PERSONNAGE} aria-hidden="true">
       <circle cx="100" cy="118" r="92" fill="#D7F25C" fillOpacity="0.14" />
       <rect x="89" y="110" width="24" height="32" rx="6" fill="#9C6440" />
       <path d="M34 240 C34 184 58 152 90 142 L101 164 L112 142 C144 152 168 184 168 240 Z" fill="#3A3F25" />

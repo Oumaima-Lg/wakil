@@ -40,7 +40,7 @@ export default function Operations() {
     <>
       <EnTetePage surtitre={`Compte courant ${compte.rib_masque}`} titre="Opérations" />
 
-      <div className="flex flex-wrap gap-5.5">
+      <div className="flex flex-wrap gap-3 sm:gap-5.5">
         <Tuile libelle={`Dépenses ${duMois()}`} valeur={dh(resume.depenses)} />
         <Tuile libelle={`Entrées ${duMois()}`} valeur={dh(resume.entrees)} />
         <Tuile libelle={`Opérations en ${nomDuMois()}`} valeur={String(resume.nombre)} />
@@ -61,7 +61,7 @@ export default function Operations() {
               </button>
             ))}
           </div>
-          <div className="flex min-h-10.5 items-center gap-2 rounded-full border border-bordure-forte bg-[#202125] px-3.5">
+          <div className="flex min-h-10.5 w-full items-center gap-2 rounded-full border border-bordure-forte bg-[#202125] px-3.5 sm:w-auto">
             <Recherche taille={16} className="text-attenue" />
             <label htmlFor="recherche-op" className="sr-only">
               Rechercher une opération
@@ -72,7 +72,7 @@ export default function Operations() {
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
               placeholder="Rechercher une opération"
-              className="w-55 bg-transparent text-sm placeholder:text-faible focus:outline-none"
+              className="w-full bg-transparent text-base placeholder:text-faible focus:outline-none sm:w-55 sm:text-sm"
             />
           </div>
         </div>
