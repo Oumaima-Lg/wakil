@@ -4,6 +4,7 @@ Lancer (depuis apps/agent-api, bank-api et Ollama démarrés) : uv run --env-fil
 """
 
 import json
+import logging
 from contextlib import contextmanager
 from decimal import Decimal
 
@@ -12,9 +13,11 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import banque
+from app import banque, reponses
 from app.agent import config, nouveau_tour, wakil
 from app.session import CLIENTS_DEMO, COOKIE, COOKIE_SECURISE, DUREE, ClientConnecte, creer_jeton
+
+journal = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Wakil · agent",
@@ -117,18 +120,32 @@ def chat(message: Message, client_id: ClientConnecte) -> StreamingResponse:
     """
 
     def flux():
-        etapes = wakil.stream(
-            nouveau_tour(message.texte, client_id),
-            config(client_id, message.conversation_id),
-            stream_mode="updates",
-        )
-        for etape in etapes:
-            for noeud, ajout in etape.items():
-                if ajout.get("reponse"):
-                    yield evenement("reponse", {"texte": ajout["reponse"]})
-                else:
-                    # Seulement le nom de la case et de l'outil : les données de la banque ne partent que dans la réponse.
-                    yield evenement("etape", {"noeud": noeud, "outil": ajout.get("outil")})
+        # Ce que les cases ont décidé pendant ce tour : l'outil choisi, le résultat de la banque, une panne éventuelle.
+        outil, donnees, erreur = None, None, False
+        try:
+            etapes = wakil.stream(
+                nouveau_tour(message.texte, client_id),
+                config(client_id, message.conversation_id),
+                stream_mode="updates",
+            )
+            for etape in etapes:
+                for noeud, ajout in etape.items():
+                    outil = ajout.get("outil", outil)
+                    donnees = ajout.get("resultat", donnees)
+                    erreur = ajout.get("erreur", erreur)
+                    if ajout.get("reponse"):
+                        # Le texte reste la référence ; outil et données servent au front à afficher le solde en
+                        # grand ou les opérations en tableau. Ce sont les données du client connecté, et de lui seul.
+                        yield evenement(
+                            "reponse", {"texte": ajout["reponse"], "outil": outil, "donnees": donnees, "erreur": erreur}
+                        )
+                    else:
+                        # Seulement le nom de la case et de l'outil : les données de la banque ne partent que dans la réponse.
+                        yield evenement("etape", {"noeud": noeud, "outil": ajout.get("outil")})
+        except Exception:
+            # Le flux a déjà commencé (statut 200 envoyé) : on ne peut plus répondre 500, on prévient par un événement.
+            journal.exception("Le tour de Wakil a échoué (client %s)", client_id)
+            yield evenement("erreur", {"texte": reponses.PANNE})
         yield evenement("fin", {})
 
     return StreamingResponse(flux(), media_type="text/event-stream")

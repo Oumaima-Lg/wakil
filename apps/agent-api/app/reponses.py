@@ -13,6 +13,7 @@ REFUS = (
     "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations w les factures dyalek."
 )
 ERREUR = "Smeh lia, kayn mochkil f la banque daba. 3awed men ba3d."
+PANNE = "Smeh lia, Wakil ma khdamch daba. 3awed men ba3d."  # panne de l'agent lui-même (LLM injoignable…)
 
 
 def dh(montant: str | Decimal) -> str:
