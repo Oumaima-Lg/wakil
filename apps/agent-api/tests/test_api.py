@@ -1,18 +1,22 @@
 """Tests de la route /chat (flux SSE), sans Ollama ni bank-api."""
 
 import json
+import time
 import uuid
 
 import httpx
 import pytest
+from langchain_core.messages import AIMessage
 
-from app import agent, reponses
+from app import agent, main, reponses
 
 
 def evenements(reponse):
-    """Découpe un flux SSE en liste de (nom de l'événement, données)."""
+    """Découpe un flux SSE en liste de (nom de l'événement, données), en ignorant les commentaires comme un navigateur."""
     resultat = []
     for bloc in reponse.text.strip().split("\n\n"):
+        if bloc.startswith(":"):
+            continue  # « : battement »
         champs = dict(ligne.split(": ", 1) for ligne in bloc.splitlines())
         resultat.append((champs["event"], json.loads(champs["data"])))
     return resultat
@@ -79,6 +83,25 @@ def test_llm_en_panne_le_flux_se_termine_proprement(salma, monkeypatch):
 
     assert reponse.status_code == 200  # le flux avait déjà commencé
     assert evenements(reponse) == [("erreur", {"texte": reponses.PANNE}), ("fin", {})]
+
+
+def test_un_llm_lent_ne_laisse_pas_la_connexion_muette(salma, monkeypatch):
+    """Modèle froid : pendant que le LLM réfléchit, des battements partent pour que le proxy ne coupe pas."""
+
+    class LLMLent:
+        def invoke(self, messages):
+            time.sleep(0.3)
+            return AIMessage(content="", tool_calls=[{"name": "consulter_solde", "args": {}, "id": "1"}])
+
+    monkeypatch.setattr(agent, "llm", LLMLent())
+    monkeypatch.setattr(main, "BATTEMENT", 0.05)  # 50 ms au lieu de 10 s, pour que le test reste rapide
+    monkeypatch.setitem(agent.OUTILS, "consulter_solde", (lambda client_id: {"solde": "2350.00"}, reponses.solde))
+
+    reponse = salma.post("/chat", json={"conversation_id": str(uuid.uuid4()), "texte": "chhal f compte dyali ?"})
+
+    assert reponse.text.startswith(": battement\n\n")  # le premier octet part avant la réponse du LLM
+    assert evenements(reponse)[-2][1]["texte"] == "Solde dyalek howa 2 350 DH."
+    assert evenements(reponse)[-1] == ("fin", {})
 
 
 @pytest.mark.parametrize(

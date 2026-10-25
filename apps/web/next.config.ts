@@ -5,6 +5,9 @@ import { AGENT_API_URL } from "./lib/config";
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
+  // Le bouton « N » des outils de Next (en développement seulement). Par défaut en bas à gauche, il cacherait
+  // « Se déconnecter » du menu ; fixé ici pour tout le monde, et pas seulement dans le cache .next de chacun.
+  devIndicators: { position: "top-right" },
   turbopack: {
     rules: {
       "*.css": {

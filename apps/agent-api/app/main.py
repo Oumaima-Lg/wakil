@@ -5,6 +5,8 @@ Lancer (depuis apps/agent-api, bank-api et Ollama démarrés) : uv run --env-fil
 
 import json
 import logging
+import queue
+import threading
 from contextlib import contextmanager
 from decimal import Decimal
 
@@ -107,6 +109,12 @@ def fermer_session(response: Response) -> None:
     response.delete_cookie(COOKIE)
 
 
+# Pendant que le LLM réfléchit, le flux reste muet. Un proxy coupe une connexion muette trop longtemps (le rewrite de
+# Next après 30 s : c'est le cas au premier message, quand Ollama recharge le modèle). On envoie donc un « battement »
+# toutes les 10 s.
+BATTEMENT = 10  # secondes
+
+
 def evenement(nom: str, donnees: dict) -> str:
     """Un événement SSE : une ligne « event: », une ligne « data: » en JSON, puis une ligne vide."""
     return f"event: {nom}\ndata: {json.dumps(donnees, ensure_ascii=False)}\n\n"
@@ -119,9 +127,8 @@ def chat(message: Message, client_id: ClientConnecte) -> StreamingResponse:
     Le client vient du jeton signé de la session, jamais du corps de la requête ni du LLM.
     """
 
-    def flux():
-        # Ce que les cases ont décidé pendant ce tour : l'outil choisi, le résultat de la banque, une panne éventuelle.
-        outil, donnees, erreur = None, None, False
+    def travailler(file: queue.Queue) -> None:
+        """Fait tourner le graphe dans un fil à part et dépose chaque étape dans la file, puis « fin »."""
         try:
             etapes = wakil.stream(
                 nouveau_tour(message.texte, client_id),
@@ -129,23 +136,42 @@ def chat(message: Message, client_id: ClientConnecte) -> StreamingResponse:
                 stream_mode="updates",
             )
             for etape in etapes:
-                for noeud, ajout in etape.items():
-                    outil = ajout.get("outil", outil)
-                    donnees = ajout.get("resultat", donnees)
-                    erreur = ajout.get("erreur", erreur)
-                    if ajout.get("reponse"):
-                        # Le texte reste la référence ; outil et données servent au front à afficher le solde en
-                        # grand ou les opérations en tableau. Ce sont les données du client connecté, et de lui seul.
-                        yield evenement(
-                            "reponse", {"texte": ajout["reponse"], "outil": outil, "donnees": donnees, "erreur": erreur}
-                        )
-                    else:
-                        # Seulement le nom de la case et de l'outil : les données de la banque ne partent que dans la réponse.
-                        yield evenement("etape", {"noeud": noeud, "outil": ajout.get("outil")})
-        except Exception:
-            # Le flux a déjà commencé (statut 200 envoyé) : on ne peut plus répondre 500, on prévient par un événement.
-            journal.exception("Le tour de Wakil a échoué (client %s)", client_id)
-            yield evenement("erreur", {"texte": reponses.PANNE})
+                file.put(("etape", etape))
+        except Exception as panne:
+            file.put(("panne", panne))
+        file.put(("fin", None))
+
+    def flux():
+        file: queue.Queue = queue.Queue()
+        threading.Thread(target=travailler, args=(file,), daemon=True).start()
+        # Ce que les cases ont décidé pendant ce tour : l'outil choisi, le résultat de la banque, une panne éventuelle.
+        outil, donnees, erreur = None, None, False
+        while True:
+            try:
+                genre, contenu = file.get(timeout=BATTEMENT)
+            except queue.Empty:
+                yield ": battement\n\n"  # commentaire SSE : ignoré par le navigateur, garde la connexion ouverte
+                continue
+            if genre == "fin":
+                break
+            if genre == "panne":
+                # Le flux a déjà commencé (statut 200 envoyé) : on ne peut plus répondre 500, on prévient par un événement.
+                journal.error("Le tour de Wakil a échoué (client %s)", client_id, exc_info=contenu)
+                yield evenement("erreur", {"texte": reponses.PANNE})
+                continue
+            for noeud, ajout in contenu.items():
+                outil = ajout.get("outil", outil)
+                donnees = ajout.get("resultat", donnees)
+                erreur = ajout.get("erreur", erreur)
+                if ajout.get("reponse"):
+                    # Le texte reste la référence ; outil et données servent au front à afficher le solde en
+                    # grand ou les opérations en tableau. Ce sont les données du client connecté, et de lui seul.
+                    yield evenement(
+                        "reponse", {"texte": ajout["reponse"], "outil": outil, "donnees": donnees, "erreur": erreur}
+                    )
+                else:
+                    # Seulement le nom de la case et de l'outil : les données de la banque ne partent que dans la réponse.
+                    yield evenement("etape", {"noeud": noeud, "outil": ajout.get("outil")})
         yield evenement("fin", {})
 
     return StreamingResponse(flux(), media_type="text/event-stream")

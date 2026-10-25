@@ -9,3 +9,7 @@ npm run dev
 ```
 
 Puis ouvrir http://localhost:3000. Les appels `/api/…` sont transmis à agent-api (voir `next.config.ts`).
+L'adresse d'agent-api (`AGENT_API_URL`, par défaut `http://127.0.0.1:8001`) est lue **au build** : la changer
+demande de reconstruire le site.
+
+Vérifier le code : `npm run lint` et `npm run typecheck` (qui génère d'abord les types des routes avec `next typegen`).

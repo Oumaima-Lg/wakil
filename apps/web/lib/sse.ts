@@ -28,8 +28,9 @@ export async function* lireEvenements(corps: ReadableStream<Uint8Array>): AsyncG
       for (const ligne of bloc.split("\n")) {
         if (ligne.startsWith("event:")) nom = ligne.slice(6).trim();
         else if (ligne.startsWith("data:")) data += ligne.slice(5).trim();
+        // Une ligne qui commence par « : » est un commentaire (le « battement » d'agent-api) : on l'ignore.
       }
-      yield { nom, donnees: data ? JSON.parse(data) : null };
+      if (data) yield { nom, donnees: JSON.parse(data) };
       fin = tampon.indexOf("\n\n");
     }
   }

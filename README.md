@@ -38,6 +38,39 @@ Traces OpenTelemetry → Phoenix · Déploiement Azure (Terraform, Ansible, Vaul
 | Cloud | Azure Container Apps, ACR, PostgreSQL Flexible Server |
 | Observabilité | OpenTelemetry, Phoenix |
 
+## Lancer en local
+
+Prérequis : [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral.sh/uv/) (Python), Node.js 24 et [Ollama](https://ollama.com).
+
+```bash
+# 1. Les secrets : copier le modèle, puis remplacer chaque « a-remplacer » par une valeur tirée au hasard,
+#    par exemple : python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+cp .env.example .env
+
+# 2. Le modèle de langue (environ 2,5 Go), la base de données et les données fictives
+ollama pull qwen3:4b-instruct
+docker compose up -d --wait
+uv run --env-file .env data/seed/generer_donnees.py
+```
+
+Puis, dans trois terminaux :
+
+```bash
+cd apps/bank-api && uv run --env-file ../../.env fastapi dev               # la banque fictive, port 8000
+cd apps/agent-api && uv run --env-file ../../.env fastapi dev --port 8001  # l'agent Wakil, port 8001
+cd apps/web && npm ci && npm run dev                                       # le site, http://localhost:3000
+```
+
+Sur http://localhost:3000, choisir un client de démo, ouvrir l'espace bancaire, puis Wakil. Après quelques minutes sans message, Ollama décharge le modèle : la réponse suivante peut prendre jusqu'à 30 secondes.
+
+Les tests :
+
+```bash
+cd apps/bank-api && uv run --env-file ../../.env pytest  # base démarrée et remplie
+cd apps/agent-api && uv run pytest                       # sans Ollama ni bank-api (doublures)
+cd apps/web && npm run lint && npm run typecheck
+```
+
 ## Ce que le projet mesure
 
 - Taux de bons outils choisis et de paramètres exacts, par modèle et par écriture (arabe, latin, mélange)
@@ -47,9 +80,9 @@ Traces OpenTelemetry → Phoenix · Déploiement Azure (Terraform, Ansible, Vaul
 
 ## Avancement
 
-- [ ] S0 — Premiers appels d'outils avec Ollama
-- [ ] S1 — Banque fictive (API + fausses données)
-- [ ] S2 — Agent LangGraph + interface Next.js
+- [x] S0 — Premiers appels d'outils avec Ollama
+- [x] S1 — Banque fictive (API + fausses données)
+- [x] S2 — Agent LangGraph + interface Next.js (espace bancaire, chat en direct, version mobile)
 - [ ] S3 — Confirmation, serveur MCP, RAG sur la FAQ
 - [ ] S4 — Benchmark darija
 - [ ] S5 — Sécurité + CI avec évaluation bloquante
