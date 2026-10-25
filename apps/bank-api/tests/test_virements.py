@@ -9,6 +9,10 @@ YOUSSEF = {"X-Client-Id": "2"}
 NADIA = {"X-Client-Id": "3"}
 
 
+def nombre_d_audits(conn):
+    return conn.execute("SELECT count(*) AS n FROM audit").fetchone()["n"]
+
+
 def premier_beneficiaire(conn, client_id):
     """Premier bénéficiaire du client, avec le compte et le solde qu'il a dans la banque."""
     return conn.execute(
@@ -25,6 +29,7 @@ def test_virement_debite_l_emetteur_et_credite_le_beneficiaire(api, conn):
 
     assert reponse.status_code == 200
     assert reponse.json()["nouveau_solde"] == "1850.00"  # 2 350 - 500
+    assert reponse.json()["simulation"] is False
     solde_beneficiaire = conn.execute(
         "SELECT solde FROM comptes WHERE id = %s", (beneficiaire["compte_id"],)
     ).fetchone()["solde"]
@@ -44,7 +49,12 @@ def test_virement_au_dessus_du_plafond_refuse(api, conn):
     reponse = api.post("/virements", headers=NADIA, json={"beneficiaire_id": beneficiaire["id"], "montant": "3000"})
 
     assert reponse.status_code == 409
-    assert reponse.json()["detail"].startswith("Plafond de virement dépassé")
+    assert reponse.json()["detail"] == {
+        "code": "plafond_depasse",
+        "message": "Plafond de virement dépassé",
+        "plafond": "2000.00",
+        "montant": "3000.00",
+    }
     assert api.get("/comptes/3/solde", headers=NADIA).json()["solde"] == "18500.00"
 
 
@@ -54,7 +64,12 @@ def test_virement_sans_solde_suffisant_refuse(api, conn):
     reponse = api.post("/virements", headers=YOUSSEF, json={"beneficiaire_id": beneficiaire["id"], "montant": "500"})
 
     assert reponse.status_code == 409
-    assert reponse.json()["detail"] == "Solde insuffisant"
+    assert reponse.json()["detail"] == {
+        "code": "solde_insuffisant",
+        "message": "Solde insuffisant",
+        "solde": "150.00",
+        "montant": "500.00",
+    }
 
 
 def test_virement_vers_le_beneficiaire_d_un_autre_client_refuse(api, conn):
@@ -74,3 +89,34 @@ def test_virement_avec_un_montant_invalide_refuse(api, conn, montant):
     reponse = api.post("/virements", headers=SALMA, json={"beneficiaire_id": beneficiaire["id"], "montant": montant})
 
     assert reponse.status_code == 422
+
+
+def test_simuler_un_virement_ne_change_rien(api, conn):
+    beneficiaire = premier_beneficiaire(conn, 1)
+    audits_avant = nombre_d_audits(conn)
+
+    reponse = api.post(
+        "/virements?simulation=true", headers=SALMA, json={"beneficiaire_id": beneficiaire["id"], "montant": "500"}
+    )
+
+    assert reponse.status_code == 200
+    resultat = reponse.json()
+    assert (resultat["montant"], resultat["nouveau_solde"], resultat["simulation"]) == ("500.00", "1850.00", True)
+    assert resultat["beneficiaire_rib_masque"].startswith("•••• ") and len(resultat["beneficiaire_rib_masque"]) == 9
+    assert api.get("/comptes/1/solde", headers=SALMA).json()["solde"] == "2350.00"
+    solde_beneficiaire = conn.execute(
+        "SELECT solde FROM comptes WHERE id = %s", (beneficiaire["compte_id"],)
+    ).fetchone()["solde"]
+    assert solde_beneficiaire == beneficiaire["solde"]
+    assert nombre_d_audits(conn) == audits_avant
+
+
+def test_simuler_un_virement_au_dessus_du_plafond_donne_le_refus(api, conn):
+    beneficiaire = premier_beneficiaire(conn, 3)
+
+    reponse = api.post(
+        "/virements?simulation=true", headers=NADIA, json={"beneficiaire_id": beneficiaire["id"], "montant": "3000"}
+    )
+
+    assert reponse.status_code == 409
+    assert reponse.json()["detail"]["code"] == "plafond_depasse"

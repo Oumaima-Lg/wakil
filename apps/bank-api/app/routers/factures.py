@@ -1,7 +1,9 @@
+import psycopg
 from fastapi import APIRouter, HTTPException
 from psycopg.types.json import Jsonb
 
 from app.db import Connexion
+from app.operations import Simulation, refus
 from app.schemas import Facture, Paiement
 from app.securite import ClientConnecte
 
@@ -21,11 +23,14 @@ def lister_factures(id_client: int, client_id: ClientConnecte, conn: Connexion) 
 
 
 @router.post("/factures/{facture_id}/payer")
-def payer_facture(facture_id: int, client_id: ClientConnecte, conn: Connexion) -> Paiement:
+def payer_facture(
+    facture_id: int, client_id: ClientConnecte, conn: Connexion, simulation: Simulation = False
+) -> Paiement:
     """Paye une facture avec le compte du client connecté.
 
     Règles : la facture appartient au client, elle est impayée, le solde est suffisant.
     Effets, tous ensemble ou aucun : débit du compte, transaction, statut « payee », ligne d'audit.
+    Avec ?simulation=true : tout est vérifié et calculé, puis annulé (vérification à blanc avant la confirmation).
     """
     # Comme @Transactional : tout le bloc est validé ensemble (COMMIT), ou tout est annulé (ROLLBACK).
     with conn.transaction():
@@ -38,7 +43,7 @@ def payer_facture(facture_id: int, client_id: ClientConnecte, conn: Connexion) -
         if facture is None:
             raise HTTPException(status_code=404, detail="Facture introuvable")
         if facture["statut"] == "payee":
-            raise HTTPException(status_code=409, detail="Facture déjà payée")
+            raise refus("facture_deja_payee", "Facture déjà payée")
 
         # Dans la Banque Atlas Démo, chaque client a un seul compte.
         compte = conn.execute(
@@ -46,7 +51,7 @@ def payer_facture(facture_id: int, client_id: ClientConnecte, conn: Connexion) -
             (client_id,),
         ).fetchone()
         if compte["solde"] < facture["montant"]:
-            raise HTTPException(status_code=409, detail="Solde insuffisant")
+            raise refus("solde_insuffisant", "Solde insuffisant", solde=compte["solde"], montant=facture["montant"])
 
         nouveau_solde = conn.execute(
             "UPDATE comptes SET solde = solde - %s WHERE id = %s RETURNING solde",
@@ -64,10 +69,15 @@ def payer_facture(facture_id: int, client_id: ClientConnecte, conn: Connexion) -
                 Jsonb({"facture_id": facture_id, "compte_id": compte["id"], "montant": str(facture["montant"])}),
             ),
         )
+        if simulation:
+            # Vérification à blanc : on annule tout le bloc (débit, statut, transaction, audit). psycopg.Rollback
+            # fait un ROLLBACK puis sort du « with » sans erreur ; nouveau_solde garde la valeur calculée par la base.
+            raise psycopg.Rollback()
 
     return Paiement(
         facture_id=facture_id,
         fournisseur=facture["fournisseur"],
         montant=facture["montant"],
         nouveau_solde=nouveau_solde,
+        simulation=simulation,
     )

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.db import Connexion
-from app.schemas import Beneficiaire, Client, Compte
+from app.schemas import Beneficiaire, Client, Compte, masquer_rib
 from app.securite import ClientConnecte
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
@@ -31,7 +31,7 @@ def lister_comptes(id_client: int, client_id: ClientConnecte, conn: Connexion) -
         "SELECT id, rib, plafond_virement FROM comptes WHERE client_id = %s ORDER BY id", (client_id,)
     ).fetchall()
     return [
-        Compte(id=ligne["id"], rib_masque=f"•••• {ligne['rib'][-4:]}", plafond_virement=ligne["plafond_virement"])
+        Compte(id=ligne["id"], rib_masque=masquer_rib(ligne["rib"]), plafond_virement=ligne["plafond_virement"])
         for ligne in lignes
     ]
 
@@ -46,6 +46,6 @@ def lister_beneficiaires(id_client: int, client_id: ClientConnecte, conn: Connex
         (client_id,),
     ).fetchall()
     return [
-        Beneficiaire(id=ligne["id"], nom=ligne["nom"], rib_masque=f"•••• {ligne['rib'][-4:]}", interne=ligne["interne"])
+        Beneficiaire(id=ligne["id"], nom=ligne["nom"], rib_masque=masquer_rib(ligne["rib"]), interne=ligne["interne"])
         for ligne in lignes
     ]

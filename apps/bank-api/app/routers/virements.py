@@ -1,22 +1,27 @@
 """Route des virements."""
 
+import psycopg
 from fastapi import APIRouter, HTTPException
 from psycopg.types.json import Jsonb
 
 from app.db import Connexion
-from app.schemas import DemandeVirement, Virement
+from app.operations import Simulation, refus
+from app.schemas import DemandeVirement, Virement, masquer_rib
 from app.securite import ClientConnecte
 
 router = APIRouter(tags=["Virements"])
 
 
 @router.post("/virements")
-def faire_virement(demande: DemandeVirement, client_id: ClientConnecte, conn: Connexion) -> Virement:
+def faire_virement(
+    demande: DemandeVirement, client_id: ClientConnecte, conn: Connexion, simulation: Simulation = False
+) -> Virement:
     """Vire de l'argent du compte du client connecté vers un de ses bénéficiaires.
 
     Règles : le bénéficiaire est connu du client, le montant est positif,
     il ne dépasse ni le plafond de virement ni le solde.
     Effets, tous ensemble ou aucun : débit, crédit du compte du bénéficiaire, transactions, ligne d'audit.
+    Avec ?simulation=true : tout est vérifié et calculé, puis annulé (vérification à blanc avant la confirmation).
     """
     with conn.transaction():
         beneficiaire = conn.execute(
@@ -33,7 +38,7 @@ def faire_virement(demande: DemandeVirement, client_id: ClientConnecte, conn: Co
         destination = conn.execute("SELECT id FROM comptes WHERE rib = %s", (beneficiaire["rib"],)).fetchone()
         destination_id = destination["id"] if destination else None
         if destination_id == source_id:
-            raise HTTPException(status_code=409, detail="Virement vers son propre compte impossible")
+            raise refus("virement_vers_soi", "Virement vers son propre compte impossible")
 
         # Verrouille les comptes toujours dans le même ordre (par id) : deux virements croisés,
         # A vers B et B vers A, ne peuvent pas s'attendre l'un l'autre indéfiniment (interblocage).
@@ -47,11 +52,14 @@ def faire_virement(demande: DemandeVirement, client_id: ClientConnecte, conn: Co
         }
         source = comptes[source_id]
         if demande.montant > source["plafond_virement"]:
-            raise HTTPException(
-                status_code=409, detail=f"Plafond de virement dépassé ({source['plafond_virement']} DH)"
+            raise refus(
+                "plafond_depasse",
+                "Plafond de virement dépassé",
+                plafond=source["plafond_virement"],
+                montant=demande.montant,
             )
         if demande.montant > source["solde"]:
-            raise HTTPException(status_code=409, detail="Solde insuffisant")
+            raise refus("solde_insuffisant", "Solde insuffisant", solde=source["solde"], montant=demande.montant)
 
         nouveau_solde = conn.execute(
             "UPDATE comptes SET solde = solde - %s WHERE id = %s RETURNING solde",
@@ -84,5 +92,13 @@ def faire_virement(demande: DemandeVirement, client_id: ClientConnecte, conn: Co
                 ),
             ),
         )
+        if simulation:
+            raise psycopg.Rollback()  # vérification à blanc : tout le bloc est annulé (voir factures.py)
 
-    return Virement(beneficiaire=beneficiaire["nom"], montant=demande.montant, nouveau_solde=nouveau_solde)
+    return Virement(
+        beneficiaire=beneficiaire["nom"],
+        beneficiaire_rib_masque=masquer_rib(beneficiaire["rib"]),
+        montant=demande.montant,
+        nouveau_solde=nouveau_solde,
+        simulation=simulation,
+    )
