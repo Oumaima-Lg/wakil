@@ -67,6 +67,19 @@ def moi(client_id: ClientConnecte) -> dict:
         return banque.profil(client_id)
 
 
+@app.get("/moi/espace")
+def mon_espace(client_id: ClientConnecte) -> dict:
+    """Tout ce que l'espace bancaire affiche, en un seul appel (« backend for frontend »). Lecture seule."""
+    with banque_joignable():
+        return {
+            "profil": banque.profil(client_id),
+            "compte": banque.compte(client_id),
+            "operations": banque.operations(client_id),
+            "factures": banque.toutes_factures(client_id),
+            "beneficiaires": banque.beneficiaires(client_id),
+        }
+
+
 @app.post("/session")
 def ouvrir_session(demande: DemandeSession, response: Response) -> dict:
     """Connexion à un client de démo : pose un cookie qui contient le jeton signé."""

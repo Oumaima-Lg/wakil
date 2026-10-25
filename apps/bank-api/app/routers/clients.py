@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.db import Connexion
-from app.schemas import Client, Compte
+from app.schemas import Beneficiaire, Client, Compte
 from app.securite import ClientConnecte
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
@@ -32,5 +32,20 @@ def lister_comptes(id_client: int, client_id: ClientConnecte, conn: Connexion) -
     ).fetchall()
     return [
         Compte(id=ligne["id"], rib_masque=f"•••• {ligne['rib'][-4:]}", plafond_virement=ligne["plafond_virement"])
+        for ligne in lignes
+    ]
+
+
+@router.get("/{id_client}/beneficiaires")
+def lister_beneficiaires(id_client: int, client_id: ClientConnecte, conn: Connexion) -> list[Beneficiaire]:
+    """Bénéficiaires du client connecté. On dit seulement s'ils sont clients de la banque, rien d'autre sur eux."""
+    verifier_client(id_client, client_id)
+    lignes = conn.execute(
+        "SELECT b.id, b.nom, b.rib, EXISTS (SELECT 1 FROM comptes c WHERE c.rib = b.rib) AS interne"
+        " FROM beneficiaires b WHERE b.client_id = %s ORDER BY b.nom",
+        (client_id,),
+    ).fetchall()
+    return [
+        Beneficiaire(id=ligne["id"], nom=ligne["nom"], rib_masque=f"•••• {ligne['rib'][-4:]}", interne=ligne["interne"])
         for ligne in lignes
     ]

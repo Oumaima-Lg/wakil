@@ -47,3 +47,16 @@ def transactions(client_id: int) -> list[dict]:
 def factures_impayees(client_id: int) -> list[dict]:
     factures = _get(client_id, f"/clients/{client_id}/factures")
     return [f for f in factures if f["statut"] == "impayee"]
+
+
+# Lectures pour l'espace bancaire du front (pas des outils du LLM).
+def operations(client_id: int, limite: int = 50) -> list[dict]:
+    return _get(client_id, f"/comptes/{_compte_principal(client_id)}/transactions", limite=limite)
+
+
+def toutes_factures(client_id: int) -> list[dict]:
+    return _get(client_id, f"/clients/{client_id}/factures")
+
+
+def beneficiaires(client_id: int) -> list[dict]:
+    return _get(client_id, f"/clients/{client_id}/beneficiaires")

@@ -13,6 +13,13 @@ class Client(BaseModel):
     ville: str
 
 
+class Beneficiaire(BaseModel):
+    id: int
+    nom: str
+    rib_masque: str
+    interne: bool  # client de la Banque Atlas Démo ? (sans rien révéler d'autre sur lui)
+
+
 class Compte(BaseModel):
     id: int
     rib_masque: str  # « •••• 9114 » : le RIB complet ne sort pas de la banque

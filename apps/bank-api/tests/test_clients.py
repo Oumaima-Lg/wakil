@@ -26,3 +26,15 @@ def test_lister_ses_comptes_avec_rib_masque(api, conn):
 
 def test_comptes_d_un_autre_client_introuvables(api):
     assert api.get("/clients/1/comptes", headers=YOUSSEF).status_code == 404
+
+
+def test_lister_ses_beneficiaires(api):
+    reponse = api.get("/clients/1/beneficiaires", headers=SALMA)
+
+    assert reponse.status_code == 200
+    beneficiaires = [{k: v for k, v in b.items() if k != "id"} for b in reponse.json()]
+    assert beneficiaires == [{"nom": "Fatima Lahlou", "rib_masque": "•••• 8633", "interne": True}]
+
+
+def test_beneficiaires_d_un_autre_client_introuvables(api):
+    assert api.get("/clients/1/beneficiaires", headers=YOUSSEF).status_code == 404

@@ -36,6 +36,23 @@ def fausse_banque(monkeypatch):
     monkeypatch.setattr(banque, "profil", profil)
     monkeypatch.setattr(banque, "compte", compte)
     monkeypatch.setattr(banque, "factures_impayees", lambda client_id: [{"montant": "312.00"}, {"montant": "249.00"}])
+    monkeypatch.setattr(
+        banque,
+        "operations",
+        lambda client_id: [{"id": 1, "date": "2026-10-21T09:00:00Z", "montant": "-57.98", "libelle": "Café"}],
+    )
+    monkeypatch.setattr(
+        banque,
+        "toutes_factures",
+        lambda client_id: [
+            {"id": 1, "fournisseur": "Eau & Électricité (démo)", "montant": "312.00", "statut": "impayee"}
+        ],
+    )
+    monkeypatch.setattr(
+        banque,
+        "beneficiaires",
+        lambda client_id: [{"id": 1, "nom": "Fatima Lahlou", "rib_masque": "•••• 8633", "interne": True}],
+    )
 
 
 @pytest.fixture

@@ -120,3 +120,15 @@ def test_apres_deconnexion_le_chat_est_refuse(salma):
     assert salma.delete("/session").status_code == 204
 
     assert salma.post("/chat", json=MESSAGE).status_code == 401
+
+
+def test_mon_espace_regroupe_tout_ce_que_le_front_affiche(salma):
+    espace = salma.get("/moi/espace").json()
+
+    assert set(espace) == {"profil", "compte", "operations", "factures", "beneficiaires"}
+    assert espace["profil"]["prenom"] == "Salma"
+    assert espace["compte"]["solde"] == "2350.00"
+
+
+def test_mon_espace_sans_session_refuse(api):
+    assert api.get("/moi/espace").status_code == 401
