@@ -10,3 +10,9 @@ export function dh(montant: string | number): string {
 export function initiales(prenom: string, nom: string): string {
   return `${prenom[0] ?? ""}${nom[0] ?? ""}`.toUpperCase();
 }
+
+/** Même chose pour un nom complet : « Fatima Lahlou » → « FL ». */
+export function initialesNom(nomComplet: string): string {
+  const [prenom = "", ...reste] = nomComplet.split(" ");
+  return initiales(prenom, reste.join(" "));
+}

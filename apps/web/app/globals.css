@@ -25,9 +25,25 @@
   --font-arabe: var(--police-arabe), sans-serif;
 }
 
+:root {
+  color-scheme: dark; /* barres de défilement et champs de formulaire sombres, assortis au site */
+}
+
 body {
   background: var(--color-fond);
   color: var(--color-texte);
+}
+
+/* Espace bancaire (« coquille d'application ») : la page prend exactement la hauteur de l'écran.
+   Le menu et Wakil restent visibles ; seul le contenu central défile. dvh suit la barre d'adresse du mobile. */
+body:has([data-coquille]) {
+  height: 100dvh;
+}
+
+/* Barres de défilement fines et discrètes dans l'espace bancaire */
+[data-coquille] :is(main, nav, aside) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-bordure-forte) transparent;
 }
 
 :focus-visible {
