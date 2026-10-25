@@ -46,7 +46,10 @@ body:has([data-coquille]) {
   scrollbar-color: var(--color-bordure-forte) transparent;
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 3px;
+/* Dans @layer base : une classe Tailwind (focus:outline-none…) peut la remplacer. Hors couche, elle gagnerait toujours. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
 }

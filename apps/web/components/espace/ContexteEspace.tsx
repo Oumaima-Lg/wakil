@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from "react";
 
 import type { Espace } from "@/lib/types";
 
@@ -59,6 +59,17 @@ export function FournisseurEspace({ children }: { children: React.ReactNode }) {
     // L'état change dans le .then, une fois la réponse arrivée (et non pendant l'effet lui-même)
     lireEspace().then(appliquer);
   }, [appliquer]);
+
+  // Quand on quitte l'espace (déconnexion, retour à l'accueil), Next le garde en mémoire, masqué (React <Activity>).
+  // On efface alors le compte et, avec lui, la conversation (le panneau Wakil disparaît) : le client suivant ne les
+  // verra jamais, même un instant. À son retour, l'effet ci-dessus relit l'espace de celui qui est connecté.
+  useLayoutEffect(
+    () => () => {
+      setEspace(null);
+      setErreur(null);
+    },
+    [],
+  );
 
   return (
     <Contexte.Provider value={{ espace, erreur, recharger, wakilOuvert, setWakilOuvert }}>{children}</Contexte.Provider>

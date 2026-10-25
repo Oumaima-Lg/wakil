@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import { dh, initiales } from "@/lib/format";
 
@@ -23,6 +23,11 @@ export type ClientDemo = {
 export function CarteClientDemo({ client }: { client: ClientDemo }) {
   const router = useRouter();
   const [etat, setEtat] = useState<"repos" | "connexion" | "erreur">("repos");
+
+  // Next 16 garde l'accueil en mémoire, masqué (React <Activity>), pendant qu'on est dans l'espace. Au moment où il
+  // est masqué, on remet le bouton au repos : sinon, au retour (déconnexion, bouton Précédent), il resterait sur
+  // « Ouverture… ». useLayoutEffect : la remise à zéro se fait avant l'affichage, sans clignotement.
+  useLayoutEffect(() => () => setEtat("repos"), []);
 
   async function ouvrirEspace() {
     setEtat("connexion");

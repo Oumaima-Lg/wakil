@@ -186,3 +186,12 @@ export function Recherche(props: Props) {
     </Svg>
   );
 }
+
+export function Attention(props: Props) {
+  return (
+    <Svg strokeWidth={1.8} {...props}>
+      <path d="M12 4l9 16H3z" />
+      <path d="M12 10v4M12 17v.01" />
+    </Svg>
+  );
+}
