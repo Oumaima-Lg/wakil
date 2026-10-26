@@ -85,13 +85,20 @@ def fausse_banque_operations(monkeypatch):
 
 @pytest.fixture
 def ecrire():
-    """Envoie un message dans une conversation (une neuve par test) et rend les événements SSE reçus."""
+    """Envoie un message dans une conversation (une neuve par test) et rend les événements SSE reçus.
+
+    facture_id : clic sur « Payer avec Wakil » ; carte : clic sur « Oui » ou « Non » d'une carte précise."""
     conversation = str(uuid.uuid4())
 
-    def envoyer(http, texte, conversation_id=conversation):
-        return evenements(http.post("/chat", json={"conversation_id": conversation_id, "texte": texte}))
+    def envoyer(http, texte, conversation_id=conversation, **boutons):
+        corps = {"conversation_id": conversation_id, "texte": texte, **boutons}
+        return evenements(http.post("/chat", json=corps))
 
     return envoyer
+
+
+def issue(evenements_recus):
+    return next(donnees for nom, donnees in evenements_recus if nom == "reponse")["issue"]
 
 
 def reponse(evenements_recus):
@@ -132,6 +139,7 @@ def test_oui_paye_pour_de_vrai(salma, faux_llm, fausse_banque_operations, ecrire
             "donnees": {"id": 1, "fournisseur": EAU, "montant": "312.00", "facture_id": 1,
                         "nouveau_solde": "2038.00", "simulation": False},
             "erreur": False,
+            "issue": "faite",  # la carte passe à « Confirmé »
         },
     )  # fmt: skip
     assert fausse_banque_operations.vrais_appels == [("paiement", 1, 1, Decimal("312.00"), False)]
@@ -267,3 +275,59 @@ def test_la_confirmation_survit_a_un_redemarrage(faux_llm, fausse_banque_operati
 
     assert etat["reponse"] == "Tkhelssat ! Solde jdid dyalek : 2 038 DH."
     assert fausse_banque_operations.vrais_appels == [("paiement", 1, 1, Decimal("312.00"), False)]
+
+
+# --- Boutons du front : « Payer avec Wakil » et les « Oui / Non » d'une carte ---------------------------------------
+
+
+def test_le_bouton_payer_va_droit_a_la_carte_sans_le_llm(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux = faux_llm()  # un LLM qui ne comprendrait rien : il ne doit même pas être appelé
+
+    recus = ecrire(salma, "Khelless liya la facture Internet (démo)", facture_id=2)
+
+    carte = dict(recus)["confirmation"]
+    assert (carte["fournisseur"], carte["montant"], carte["intro"]) == (INTERNET, "249.00", reponses.INTRO["paiement"])
+    assert faux.appels == 0
+    assert fausse_banque_operations.vrais_appels == []  # la confirmation reste obligatoire
+
+
+@pytest.mark.parametrize("facture_id", [99, 7])  # 7 existe, mais c'est une facture de Youssef
+def test_le_bouton_payer_refuse_une_facture_qui_n_est_pas_a_moi(
+    salma, faux_llm, fausse_banque_operations, ecrire, facture_id
+):
+    faux_llm()
+    assert reponse(ecrire(salma, "Khelless liya had l'facture", facture_id=facture_id)) == reponses.FACTURE_INTROUVABLE
+    assert fausse_banque_operations.appels == []
+
+
+def test_un_oui_sur_une_ancienne_carte_ne_confirme_pas_la_nouvelle(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux_llm()
+    carte_eau = dict(ecrire(salma, "Khelless liya l'eau", facture_id=1))["confirmation"]["carte"]
+    carte_internet = dict(ecrire(salma, "Khelless liya internet", facture_id=2))["confirmation"]["carte"]
+
+    # Clic sur « Oui » de la carte de l'eau, restée à l'écran : elle a été remplacée, rien ne doit partir
+    recus = ecrire(salma, "Oui", carte=carte_eau)
+
+    assert (reponse(recus), issue(recus)) == (reponses.CARTE_EXPIREE, "expiree")
+    assert fausse_banque_operations.vrais_appels == []
+    # La carte d'internet, elle, attend toujours : son propre « Oui » la paie
+    assert issue(ecrire(salma, "Oui", carte=carte_internet)) == "faite"
+    assert fausse_banque_operations.vrais_appels == [("paiement", 1, 2, Decimal("249.00"), False)]
+
+
+def test_un_oui_sur_une_carte_deja_traitee_ne_fait_rien(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux_llm()
+    carte = dict(ecrire(salma, "Khelless liya l'eau", facture_id=1))["confirmation"]["carte"]
+    assert issue(ecrire(salma, "Oui", carte=carte)) == "faite"
+
+    assert issue(ecrire(salma, "Oui", carte=carte)) == "expiree"  # double clic : un seul paiement
+    assert len(fausse_banque_operations.vrais_appels) == 1
+
+
+@pytest.mark.parametrize(("reponse_client", "attendu"), [("La", "annulee"), ("ewa", "incomprise")])
+def test_l_issue_indique_ce_qu_est_devenue_la_carte(
+    salma, faux_llm, fausse_banque_operations, ecrire, reponse_client, attendu
+):
+    faux_llm()
+    ecrire(salma, "Khelless liya l'eau", facture_id=1)
+    assert issue(ecrire(salma, reponse_client)) == attendu

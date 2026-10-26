@@ -113,13 +113,19 @@ class Etat(TypedDict, total=False):
     resultat: dict | list | None
     operation: dict | None  # l'opération vérifiée à blanc, qui attend la réponse du client
     confirmation: Literal["oui", "non"] | None
+    # Ce qu'est devenue l'opération, pour que le front mette la carte à jour.
+    issue: Literal["faite", "annulee", "incomprise", "refusee", "erreur"] | None
     erreur: bool
     reponse: str
 
 
-def nouveau_tour(demande: str, client_id: int) -> dict:
-    """Entrée d'un nouveau message. Sans cette remise à zéro, la mémoire garderait l'erreur ou l'outil du message précédent."""
-    return {
+def nouveau_tour(demande: str, client_id: int, facture_id: int | None = None) -> dict:
+    """Entrée d'un nouveau message. Sans cette remise à zéro, la mémoire garderait l'erreur ou l'outil du message précédent.
+
+    facture_id : le client a cliqué « Payer avec Wakil » sur une facture précise. L'intention est sûre : on ne la fait
+    pas deviner au LLM, on va droit à la vérification à blanc (et à la confirmation, toujours obligatoire).
+    """
+    tour = {
         "client_id": client_id,
         "messages": [HumanMessage(demande)],
         "demande": demande,
@@ -128,9 +134,13 @@ def nouveau_tour(demande: str, client_id: int) -> dict:
         "resultat": None,
         "operation": None,
         "confirmation": None,
+        "issue": None,
         "erreur": False,
         "reponse": "",
     }
+    if facture_id is not None:
+        tour |= {"outil": "payer_facture", "arguments": {"facture_id": facture_id}}
+    return tour
 
 
 def config(client_id: int, conversation_id: str) -> dict:
@@ -138,12 +148,21 @@ def config(client_id: int, conversation_id: str) -> dict:
     return {"configurable": {"thread_id": f"{client_id}:{conversation_id}"}}
 
 
-def prochaine_entree(graphe, demande: str, client_id: int, conf: dict) -> dict | Command:
+def carte_en_attente(graphe, conf: dict) -> str | None:
+    """L'identifiant de la carte « Wach nconfirmi ? » qui attend une réponse, s'il y en a une."""
+    interruptions = graphe.get_state(conf).interrupts
+    return interruptions[0].id if interruptions else None
+
+
+def prochaine_entree(graphe, demande: str, client_id: int, conf: dict, facture_id: int | None = None) -> dict | Command:
     """Si une opération attend « Wach nconfirmi ? », le message du client est sa réponse : on reprend le graphe là où
-    il s'était arrêté (Command(resume=…)). Sinon, c'est une nouvelle demande."""
-    if graphe.get_state(conf).interrupts:
+    il s'était arrêté (Command(resume=…)). Sinon, c'est une nouvelle demande.
+
+    Un clic sur « Payer avec Wakil » est toujours une nouvelle demande : la carte en attente, s'il y en a une, est
+    abandonnée (LangGraph repart du début avec la nouvelle entrée)."""
+    if facture_id is None and carte_en_attente(graphe, conf):
         return Command(resume=demande)
-    return nouveau_tour(demande, client_id)
+    return nouveau_tour(demande, client_id, facture_id)
 
 
 def dire(texte: str) -> dict:
@@ -187,8 +206,10 @@ def lire_montant(valeur) -> Decimal | None:
     return montant if montant > 0 else None
 
 
-def avant_comprendre(etat: Etat) -> Literal["saluer", "remercier", "comprendre"]:
-    """Aiguillage de départ : une salutation ou une politesse seule ne passe pas par le LLM."""
+def avant_comprendre(etat: Etat) -> Literal["preparer_operation", "saluer", "remercier", "comprendre"]:
+    """Aiguillage de départ : un bouton « Payer avec Wakil », une salutation ou une politesse ne passent pas par le LLM."""
+    if etat.get("outil") in OPERATIONS:
+        return "preparer_operation"
     texte = etat["demande"].strip().lower().rstrip("!?.، ")
     if texte in SALUTATIONS:
         return "saluer"
@@ -251,7 +272,14 @@ def preparer_operation(etat: Etat) -> dict:
     client_id, arguments = etat["client_id"], etat.get("arguments") or {}
     type_operation = OPERATIONS[etat["outil"]]
     try:
-        if type_operation == "paiement":
+        if type_operation == "paiement" and "facture_id" in arguments:
+            # Bouton « Payer avec Wakil » : la facture doit être une facture impayée de ce client
+            impayees = banque.factures_impayees(client_id)
+            facture = next((f for f in impayees if f["id"] == arguments["facture_id"]), None)
+            if facture is None:
+                return dire(reponses.FACTURE_INTROUVABLE)
+            simulation = banque.payer(client_id, facture["id"], simulation=True)
+        elif type_operation == "paiement":
             fournisseur = FOURNISSEURS.get(arguments.get("fournisseur"))
             if fournisseur is None:
                 return dire(reponses.QUEL_FOURNISSEUR)
@@ -280,7 +308,11 @@ def preparer_operation(etat: Etat) -> dict:
         return {"erreur": True, **dire(reponses.ERREUR)}
 
     operation = {"type": type_operation, **simulation}
-    operation["texte"] = reponses.confirmation(operation)
+    operation |= {
+        "intro": reponses.INTRO[type_operation],
+        "question": reponses.QUESTION[type_operation],
+        "texte": reponses.confirmation(operation),  # le tout en une phrase : historique du LLM, terminal
+    }
     # La question entre dans l'historique ; la réponse du client y entrera à la reprise.
     return {"operation": operation, "messages": [AIMessage(operation["texte"])]}
 
@@ -316,18 +348,23 @@ def executer_operation(etat: Etat) -> dict:
         else:
             resultat = banque.virer(client_id, operation["beneficiaire_id"], Decimal(operation["montant"]))
     except banque.RefusBanque as refus:  # la situation a changé entre la carte et le « oui »
-        return {**outil, **dire(reponses.refus(operation["type"], refus.detail))}
+        return {**outil, "issue": "refusee", **dire(reponses.refus(operation["type"], refus.detail))}
     except httpx.HTTPError:
-        return {**outil, "erreur": True, **dire(reponses.ERREUR_OPERATION)}
-    return {**outil, "resultat": resultat, **dire(reponses.operation_faite(operation["type"], resultat))}
+        return {**outil, "issue": "erreur", "erreur": True, **dire(reponses.ERREUR_OPERATION)}
+    return {
+        **outil,
+        "issue": "faite",
+        "resultat": resultat,
+        **dire(reponses.operation_faite(operation["type"], resultat)),
+    }
 
 
 def annuler(etat: Etat) -> dict:
     """« La », ou une réponse qui n'est ni oui ni non : on ne touche à rien."""
     outil = {"outil": etat["outil"]}
     if etat.get("confirmation") == "non":
-        return {**outil, **dire(reponses.ANNULEE[etat["operation"]["type"]])}
-    return {**outil, **dire(reponses.CONFIRMATION_INCOMPRISE)}
+        return {**outil, "issue": "annulee", **dire(reponses.ANNULEE[etat["operation"]["type"]])}
+    return {**outil, "issue": "incomprise", **dire(reponses.CONFIRMATION_INCOMPRISE)}
 
 
 graphe = StateGraph(Etat)

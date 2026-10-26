@@ -28,6 +28,7 @@ def test_chat_envoie_les_etapes_puis_la_reponse(salma, faux_llm, monkeypatch):
                 "outil": "consulter_solde",
                 "donnees": {"solde": "2350.00"},
                 "erreur": False,
+                "issue": None,
             },
         ),
         ("fin", {}),
@@ -40,7 +41,7 @@ def test_un_salut_repond_sans_outil_ni_donnees(salma, faux_llm):
     reponse = salma.post("/chat", json={"conversation_id": str(uuid.uuid4()), "texte": "salam"})
 
     assert evenements(reponse) == [
-        ("reponse", {"texte": reponses.SALUT, "outil": None, "donnees": None, "erreur": False}),
+        ("reponse", {"texte": reponses.SALUT, "outil": None, "donnees": None, "erreur": False, "issue": None}),
         ("fin", {}),
     ]
 
@@ -57,7 +58,7 @@ def test_banque_injoignable_la_reponse_le_signale(salma, faux_llm, monkeypatch):
 
     assert evenements(reponse)[-2] == (
         "reponse",
-        {"texte": reponses.ERREUR, "outil": "consulter_solde", "donnees": None, "erreur": True},
+        {"texte": reponses.ERREUR, "outil": "consulter_solde", "donnees": None, "erreur": True, "issue": None},
     )
 
 

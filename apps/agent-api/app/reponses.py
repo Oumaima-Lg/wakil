@@ -50,6 +50,11 @@ QUEL_FOURNISSEUR = "Ach men facture bghiti nkhelless : l'eau w l'électricité, 
 QUEL_BENEFICIAIRE = "L chkoun bghiti nsifet ? 3tini smiyto kif ma kayna f les bénéficiaires dyalek."
 QUEL_MONTANT = "Chhal bghiti nsifet ?"
 CONFIRMATION_INCOMPRISE = "Ma fhemtch jawab dyalek, donc ma dert walou. Ila bghiti, 3awed talab."
+# Le client répond à une carte qui n'attend plus rien (déjà traitée, ou remplacée par une demande plus récente).
+CARTE_EXPIREE = "Had l'carte ma b9atch salha : ma dert walou. Ila bghiti, 3awed talab."
+FACTURE_INTROUVABLE = "Had l'facture ma kaynach f les factures li mazal ma tkhelsou."
+INTRO = {"paiement": "Hahiya l'facture li bghiti nkhelless :", "virement": "Hahowa l'virement li bghiti ndir :"}
+QUESTION = {"paiement": "Wach nconfirmi l'paiement ?", "virement": "Wach nconfirmi l'virement ?"}
 # Après un « oui », si la banque ne répond pas, on ne sait pas si l'opération est passée : on le dit honnêtement.
 ERREUR_OPERATION = "Smeh lia, kayn mochkil f la banque. Chouf l'opérations dyalek 9bel ma t3awed."
 ANNULEE = {"paiement": "Safi, ma tkhelless walou.", "virement": "Safi, ma tsifet walou."}
@@ -69,15 +74,14 @@ def beneficiaire_ambigu(nom: str) -> str:
 
 def confirmation(operation: dict) -> str:
     """Le texte de la carte « Wach nconfirmi ? », avec les montants de la vérification à blanc."""
-    apres = f"Solde dyalek men b3d : {dh(operation['nouveau_solde'])}."
-    if operation["type"] == "paiement":
-        return (
-            f"Hahiya l'facture li bghiti nkhelless : {operation['fournisseur']}, {dh(operation['montant'])}. {apres}\n"
-            "Wach nconfirmi l'paiement ? (Oui / La)"
-        )
+    type_operation = operation["type"]
+    if type_operation == "paiement":
+        quoi = f"{operation['fournisseur']}, {dh(operation['montant'])}"
+    else:
+        quoi = f"{dh(operation['montant'])} l {operation['beneficiaire']} ({operation['beneficiaire_rib_masque']})"
     return (
-        f"Hahowa l'virement li bghiti ndir : {dh(operation['montant'])} l {operation['beneficiaire']} "
-        f"({operation['beneficiaire_rib_masque']}). {apres}\nWach nconfirmi l'virement ? (Oui / La)"
+        f"{INTRO[type_operation]} {quoi}. Solde dyalek men b3d : {dh(operation['nouveau_solde'])}.\n"
+        f"{QUESTION[type_operation]} (Oui / La)"
     )
 
 
