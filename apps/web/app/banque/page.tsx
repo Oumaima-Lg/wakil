@@ -1,19 +1,46 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
 import { Carte } from "@/components/Carte";
+import { useWakil } from "@/components/espace/ContexteConversation";
 import { useEspace } from "@/components/espace/ContexteEspace";
-import { Bloc, EnTetePage, LigneOperation, StatutFacture, TitreBloc } from "@/components/espace/elements";
+import {
+  Bloc,
+  EnTetePage,
+  LigneOperation,
+  StatutFacture,
+  TitreBloc,
+  VariationSolde,
+} from "@/components/espace/elements";
 import { dateDuJour, duMois, resumeDuMois, somme } from "@/lib/espace";
 import { dh, initialesNom } from "@/lib/format";
 
 /** Vue d'ensemble : carte et solde, factures à payer, dernières opérations, bénéficiaires, dépenses du mois. */
 export default function VueEnsemble() {
-  const { espace, setWakilOuvert } = useEspace();
+  const router = useRouter();
+  const { espace, nouveautes, setWakilOuvert } = useEspace();
+  const { payerFacture, proposer } = useWakil();
   if (!espace) return null; // en attendant, la coquille affiche « Chargement… »
   const { profil, compte, operations, factures, beneficiaires } = espace;
   const impayees = factures.filter((f) => f.statut === "impayee");
-  // Les factures à payer d'abord, puis les dernières payées
-  const apercuFactures = [...impayees, ...factures.filter((f) => f.statut === "payee").reverse()].slice(0, 4);
+  // Les factures à payer d'abord, puis celle qui vient d'être payée avec Wakil, puis les autres payées
+  const payees = factures.filter((f) => f.statut === "payee").reverse();
+  const apercuFactures = [
+    ...impayees,
+    ...payees.filter((f) => nouveautes.factures.has(f.id)),
+    ...payees.filter((f) => !nouveautes.factures.has(f.id)),
+  ].slice(0, 4);
+
+  // Une seule facture : Wakil prépare tout de suite son paiement. Plusieurs : on choisit sur la page des factures.
+  function payer() {
+    if (impayees.length === 1) {
+      setWakilOuvert(true);
+      payerFacture(impayees[0]);
+    } else {
+      router.push("/banque/factures");
+    }
+  }
   const resume = resumeDuMois(operations);
   const plusGrande = resume.categories[0]?.total ?? 0;
 
@@ -26,7 +53,7 @@ export default function VueEnsemble() {
             ouvre ou ferme le menu et Wakil. Il faut 568 px pour la carte (340) et le solde (200) côte à côte. */}
         <section
           aria-label="Compte courant"
-          className="@container min-w-0 flex-[2_1_560px] rounded-[22px] border-[1.5px] border-bordure bg-surface p-4 sm:rounded-3xl sm:p-6"
+          className={`@container min-w-0 flex-[2_1_560px] rounded-[22px] border-[1.5px] bg-surface p-4 sm:rounded-3xl sm:p-6 ${nouveautes.variationSolde ? "border-accent" : "border-bordure"}`}
         >
           <div className="flex flex-wrap items-center justify-center gap-7">
             {/* Entre 500 et 568 px : la carte passe à 272 px pour rester à côté du solde. En dessous : tout s'empile,
@@ -45,6 +72,11 @@ export default function VueEnsemble() {
                 <p className="text-[34px] font-semibold tracking-[0.01em] text-accent tabular-nums sm:text-[40px]">
                   {dh(compte.solde)}
                 </p>
+                {nouveautes.variationSolde && (
+                  <div className="flex @max-[31.25rem]:justify-center">
+                    <VariationSolde variation={nouveautes.variationSolde} />
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap gap-x-8 gap-y-3 border-t border-[#36393e] pt-3.5 @max-[31.25rem]:justify-center">
                 <div className="flex flex-col gap-0.5">
@@ -76,10 +108,10 @@ export default function VueEnsemble() {
           {impayees.length > 0 && (
             <button
               type="button"
-              onClick={() => setWakilOuvert(true)}
+              onClick={payer}
               className="mt-auto min-h-11.5 cursor-pointer rounded-full border-[1.5px] border-accent text-sm font-semibold"
             >
-              Payer avec Wakil
+              {impayees.length === 1 ? "Payer avec Wakil" : "Choisir une facture à payer"}
             </button>
           )}
         </section>
@@ -90,7 +122,7 @@ export default function VueEnsemble() {
           <TitreBloc id="titre-operations" titre="Dernières opérations" lien="/banque/operations" />
           <ul>
             {operations.slice(0, 6).map((o) => (
-              <LigneOperation key={o.id} operation={o} />
+              <LigneOperation key={o.id} operation={o} nouveau={nouveautes.operations.has(o.id)} />
             ))}
           </ul>
         </Bloc>
@@ -102,13 +134,13 @@ export default function VueEnsemble() {
               {apercuFactures.map((f) => (
                 <li
                   key={f.id}
-                  className="-mx-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border-t border-bordure px-2.5 py-3"
+                  className={`-mx-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border-t border-bordure px-2.5 py-3 ${nouveautes.factures.has(f.id) ? "bg-surligne" : ""}`}
                 >
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="text-[15px]">{f.fournisseur}</span>
                     <span className="text-sm font-semibold tabular-nums">{dh(f.montant)}</span>
                   </div>
-                  <StatutFacture facture={f} />
+                  <StatutFacture facture={f} aLInstant={nouveautes.factures.has(f.id)} />
                 </li>
               ))}
             </ul>
@@ -136,7 +168,11 @@ export default function VueEnsemble() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setWakilOuvert(true)}
+                      onClick={() => {
+                        // Le montant ne se devine pas : le champ est prérempli, le curseur attend après « sifet »
+                        setWakilOuvert(true);
+                        proposer(`sifet  DH l ${b.nom}`, 6);
+                      }}
                       className="cursor-pointer text-sm text-accent underline-offset-4 hover:underline"
                     >
                       Virer avec Wakil

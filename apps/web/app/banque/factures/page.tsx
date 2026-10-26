@@ -1,5 +1,6 @@
 "use client";
 
+import { useWakil } from "@/components/espace/ContexteConversation";
 import { useEspace } from "@/components/espace/ContexteEspace";
 import { Bloc, EnTetePage, StatutFacture } from "@/components/espace/elements";
 import { Cadenas, Goutte, Mobile, Recu, Wifi } from "@/components/icones";
@@ -12,11 +13,16 @@ const iconeDe = (fournisseur: string) => ICONES[fournisseur as keyof typeof ICON
 
 /** Les factures : celles à payer en cartes, celles déjà payées en liste. */
 export default function Factures() {
-  const { espace, setWakilOuvert } = useEspace();
+  const { espace, nouveautes, setWakilOuvert } = useEspace();
+  const { payerFacture } = useWakil();
   if (!espace) return null; // en attendant, la coquille affiche « Chargement… »
   const { factures } = espace;
   const impayees = factures.filter((f) => f.statut === "impayee");
-  const payees = factures.filter((f) => f.statut === "payee").reverse(); // la plus récente d'abord
+  // Celle qui vient d'être payée avec Wakil en premier, puis la plus récente d'abord
+  const payees = factures
+    .filter((f) => f.statut === "payee")
+    .reverse()
+    .sort((a, b) => Number(nouveautes.factures.has(b.id)) - Number(nouveautes.factures.has(a.id)));
 
   return (
     <>
@@ -52,7 +58,10 @@ export default function Factures() {
                   <p className="text-3xl font-semibold text-accent tabular-nums">{dh(f.montant)}</p>
                   <button
                     type="button"
-                    onClick={() => setWakilOuvert(true)}
+                    onClick={() => {
+                      setWakilOuvert(true);
+                      payerFacture(f); // va droit à la carte de confirmation, sans passer par le LLM
+                    }}
                     className="min-h-11.5 cursor-pointer rounded-full bg-accent text-sm font-semibold text-sur-accent"
                   >
                     Payer avec Wakil
@@ -79,7 +88,7 @@ export default function Factures() {
             {payees.map((f) => (
               <li
                 key={f.id}
-                className="-mx-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border-t border-bordure px-2.5 py-3"
+                className={`-mx-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border-t border-bordure px-2.5 py-3 ${nouveautes.factures.has(f.id) ? "bg-surligne" : ""}`}
               >
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[15px]">{f.fournisseur}</span>
@@ -87,7 +96,7 @@ export default function Factures() {
                 </div>
                 <div className="flex items-center gap-3.5">
                   <span className="text-[15px] font-semibold tabular-nums">{dh(f.montant)}</span>
-                  <StatutFacture facture={f} />
+                  <StatutFacture facture={f} aLInstant={nouveautes.factures.has(f.id)} />
                 </div>
               </li>
             ))}

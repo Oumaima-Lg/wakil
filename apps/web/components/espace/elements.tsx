@@ -87,15 +87,26 @@ export const montantSigne = (montant: string) => `${Number(montant) > 0 ? "+" : 
  * Une ligne d'opération : date, libellé, montant. `complete` affiche l'année (page Opérations).
  * Téléphone : libellé avec la date en dessous, montant à droite. À partir de 640 px : trois colonnes.
  */
-export function LigneOperation({ operation, complete = false }: { operation: Operation; complete?: boolean }) {
+export function LigneOperation({
+  operation,
+  complete = false,
+  nouveau = false,
+}: {
+  operation: Operation;
+  complete?: boolean;
+  nouveau?: boolean; // vient d'être faite avec Wakil : surlignée, avec « Nouveau »
+}) {
   const date = complete ? dateComplete(operation.date) : jour(operation.date);
   return (
     <li
-      className={`-mx-2.5 flex items-center justify-between gap-3.5 rounded-xl border-t border-bordure px-2.5 py-3 sm:grid ${complete ? "sm:grid-cols-[110px_minmax(0,1fr)_auto]" : "sm:grid-cols-[58px_minmax(0,1fr)_auto]"}`}
+      className={`-mx-2.5 flex items-center justify-between gap-3.5 rounded-xl border-t border-bordure px-2.5 py-3 sm:grid ${complete ? "sm:grid-cols-[110px_minmax(0,1fr)_auto]" : "sm:grid-cols-[58px_minmax(0,1fr)_auto]"} ${nouveau ? "bg-surligne" : ""}`}
     >
       <span className="hidden text-sm text-attenue tabular-nums sm:block">{date}</span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[15px]">{operation.libelle}</span>
+        <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[15px]">
+          {operation.libelle}
+          {nouveau && <Nouveau />}
+        </span>
         <span className="text-[12.5px] text-attenue tabular-nums sm:hidden">{date}</span>
       </span>
       <span className="flex-none text-right text-[15px] font-semibold tabular-nums">
@@ -105,8 +116,32 @@ export function LigneOperation({ operation, complete = false }: { operation: Ope
   );
 }
 
-/** « À payer » ou « Payée ». */
-export function StatutFacture({ facture }: { facture: Facture }) {
+/** La petite étiquette « Nouveau » de ce qui vient d'être fait avec Wakil. */
+export function Nouveau() {
+  return (
+    <span className="rounded-full bg-accent px-2.25 py-0.5 text-[11.5px] font-semibold text-sur-accent">Nouveau</span>
+  );
+}
+
+/** Pastille « −312 DH · à l'instant » sous le solde, après une opération faite avec Wakil. */
+export function VariationSolde({ variation }: { variation: number }) {
+  return (
+    <span className="self-start rounded-full border border-[#4a4e35] bg-surligne px-3 py-1 text-[13px] font-medium text-note-texte tabular-nums">
+      {variation < 0 ? "−" : "+"}
+      {dh(Math.abs(variation))} · à l&apos;instant
+    </span>
+  );
+}
+
+/** « À payer », « Payée », ou « Payée · à l'instant » si elle vient d'être payée avec Wakil. */
+export function StatutFacture({ facture, aLInstant = false }: { facture: Facture; aLInstant?: boolean }) {
+  if (aLInstant) {
+    return (
+      <span className="rounded-full border border-[#4a4e35] bg-surligne px-2.5 py-1 text-[12.5px] font-medium text-note-texte">
+        Payée · à l&apos;instant
+      </span>
+    );
+  }
   return facture.statut === "impayee" ? (
     <span className="rounded-full border border-[#5a5d62] px-2.5 py-1 text-[12.5px] font-medium">À payer</span>
   ) : (

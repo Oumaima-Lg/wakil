@@ -1,5 +1,6 @@
 "use client";
 
+import { useWakil } from "@/components/espace/ContexteConversation";
 import { useEspace } from "@/components/espace/ContexteEspace";
 import { Bloc, EnTetePage, Note, Tuile } from "@/components/espace/elements";
 import { dh, initialesNom } from "@/lib/format";
@@ -7,6 +8,7 @@ import { dh, initialesNom } from "@/lib/format";
 /** Les bénéficiaires de virement. Minimisation des données : ni ville ni RIB complet. */
 export default function Beneficiaires() {
   const { espace, setWakilOuvert } = useEspace();
+  const { proposer } = useWakil();
   if (!espace) return null; // en attendant, la coquille affiche « Chargement… »
   const { compte, beneficiaires } = espace;
   const exemple = beneficiaires[0]?.nom.split(" ")[0] ?? "Fatima";
@@ -42,7 +44,11 @@ export default function Beneficiaires() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setWakilOuvert(true)}
+                  onClick={() => {
+                    // Le montant ne se devine pas : le champ est prérempli, le curseur attend après « sifet »
+                    setWakilOuvert(true);
+                    proposer(`sifet  DH l ${b.nom}`, 6);
+                  }}
                   className="min-h-11.5 cursor-pointer rounded-full border-[1.5px] border-accent px-5 text-sm font-semibold"
                 >
                   Virer avec Wakil

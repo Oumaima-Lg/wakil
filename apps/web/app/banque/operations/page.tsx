@@ -20,7 +20,7 @@ const simplifier = (texte: string) =>
 
 /** Toutes les opérations du compte, regroupées par mois, avec un filtre et une recherche. */
 export default function Operations() {
-  const { espace } = useEspace();
+  const { espace, nouveautes } = useEspace();
   const [filtre, setFiltre] = useState<Filtre>("tout");
   const [recherche, setRecherche] = useState("");
   if (!espace) return null; // en attendant, la coquille affiche « Chargement… »
@@ -88,7 +88,7 @@ export default function Operations() {
               </div>
               <ul>
                 {g.lignes.map((o) => (
-                  <LigneOperation key={o.id} operation={o} complete />
+                  <LigneOperation key={o.id} operation={o} complete nouveau={nouveautes.operations.has(o.id)} />
                 ))}
               </ul>
             </div>

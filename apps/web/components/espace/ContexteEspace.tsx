@@ -1,15 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { AUCUNE_NOUVEAUTE, differences, type Nouveautes } from "@/lib/espace";
 import type { Espace } from "@/lib/types";
 
 type ValeurEspace = {
   espace: Espace | null;
   erreur: string | null;
-  /** Relit le compte dans la banque : utile après une opération faite avec Wakil (étape S3). */
-  recharger: () => Promise<void>;
+  /** Relit le compte dans la banque. surligner : après une opération faite avec Wakil, on repère ce qui a changé. */
+  recharger: (surligner?: boolean) => Promise<void>;
+  /** Ce qui a changé après la dernière opération de Wakil : surligné « Nouveau », « à l'instant ». */
+  nouveautes: Nouveautes;
   wakilOuvert: boolean;
   setWakilOuvert: (ouvert: boolean) => void;
 };
@@ -38,14 +41,18 @@ export function FournisseurEspace({ children }: { children: React.ReactNode }) {
   const [espace, setEspace] = useState<Espace | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [wakilOuvert, setWakilOuvert] = useState(false); // fermé au départ : bouton flottant « Wakil »
+  const [nouveautes, setNouveautes] = useState<Nouveautes>(AUCUNE_NOUVEAUTE);
+  const precedent = useRef<Espace | null>(null); // le compte tel qu'il était avant le dernier rechargement
 
   const appliquer = useCallback(
-    (resultat: Resultat) => {
+    (resultat: Resultat, surligner = false) => {
       if (resultat === "sans-session") {
         router.replace("/"); // pas (ou plus) de session : retour à l'accueil
       } else if ("erreur" in resultat) {
         setErreur(resultat.erreur);
       } else {
+        if (surligner && precedent.current) setNouveautes(differences(precedent.current, resultat.espace));
+        precedent.current = resultat.espace;
         setEspace(resultat.espace);
         setErreur(null);
       }
@@ -53,7 +60,10 @@ export function FournisseurEspace({ children }: { children: React.ReactNode }) {
     [router],
   );
 
-  const recharger = useCallback(async () => appliquer(await lireEspace()), [appliquer]);
+  const recharger = useCallback(
+    async (surligner = false) => appliquer(await lireEspace(), surligner),
+    [appliquer],
+  );
 
   useEffect(() => {
     // L'état change dans le .then, une fois la réponse arrivée (et non pendant l'effet lui-même)
@@ -67,11 +77,15 @@ export function FournisseurEspace({ children }: { children: React.ReactNode }) {
     () => () => {
       setEspace(null);
       setErreur(null);
+      setNouveautes(AUCUNE_NOUVEAUTE);
+      precedent.current = null;
     },
     [],
   );
 
   return (
-    <Contexte.Provider value={{ espace, erreur, recharger, wakilOuvert, setWakilOuvert }}>{children}</Contexte.Provider>
+    <Contexte.Provider value={{ espace, erreur, recharger, nouveautes, wakilOuvert, setWakilOuvert }}>
+      {children}
+    </Contexte.Provider>
   );
 }

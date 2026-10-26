@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { ChevronBas, Deplier, Etoile, Fleche } from "@/components/icones";
 import { useEcranLarge } from "@/lib/useEcranLarge";
 
 import { AccueilChat, BulleClient, BulleWakil, IndicateurAvancement, SessionExpiree } from "./Bulles";
+import { useWakil } from "./ContexteConversation";
 import { useEspace } from "./ContexteEspace";
-import { useConversation } from "./useConversation";
 
 /**
  * Wakil : un panneau à droite sur grand écran, un volet qui monte du bas sur téléphone. C'est le même composant
@@ -17,8 +17,8 @@ import { useConversation } from "./useConversation";
 export function PanneauWakil() {
   const { espace, wakilOuvert, setWakilOuvert } = useEspace();
   const ecranLarge = useEcranLarge();
-  const { messages, avancement, sessionExpiree, envoyer, reessayer } = useConversation();
-  const [brouillon, setBrouillon] = useState("");
+  const { messages, avancement, sessionExpiree, envoyer, reessayer, repondreCarte, brouillon, setBrouillon, curseur } =
+    useWakil();
   const volet = useRef<HTMLElement>(null);
   const zone = useRef<HTMLDivElement>(null);
   const champ = useRef<HTMLTextAreaElement>(null);
@@ -28,6 +28,13 @@ export function PanneauWakil() {
   useEffect(() => {
     if (wakilOuvert) (ecranLarge ? champ.current : volet.current)?.focus();
   }, [wakilOuvert, ecranLarge]);
+
+  // Un bouton d'une page a prérempli le champ (« Virer avec Wakil ») : on y place le curseur, là où taper le montant.
+  useEffect(() => {
+    if (!curseur || !champ.current) return;
+    champ.current.focus();
+    champ.current.setSelectionRange(curseur.position, curseur.position);
+  }, [curseur]);
 
   // Sur téléphone, le volet est une fenêtre modale : Échap la ferme.
   useEffect(() => {
@@ -110,7 +117,12 @@ export function PanneauWakil() {
                 message.auteur === "client" ? (
                   <BulleClient key={message.id} texte={message.texte} />
                 ) : (
-                  <BulleWakil key={message.id} message={message} reessayer={() => reessayer(message)} />
+                  <BulleWakil
+                    key={message.id}
+                    message={message}
+                    reessayer={() => reessayer(message)}
+                    repondre={(reponse) => message.carte && repondreCarte(message.carte, reponse)}
+                  />
                 ),
               )}
               {avancement && <IndicateurAvancement etat={avancement} />}

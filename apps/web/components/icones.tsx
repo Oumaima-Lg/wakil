@@ -227,3 +227,11 @@ export function Sortie(props: Props) {
     </Svg>
   );
 }
+
+export function Echange(props: Props) {
+  return (
+    <Svg strokeWidth={1.6} {...props}>
+      <path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4" />
+    </Svg>
+  );
+}

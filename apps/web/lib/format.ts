@@ -16,3 +16,8 @@ export function initialesNom(nomComplet: string): string {
   const [prenom = "", ...reste] = nomComplet.split(" ");
   return initiales(prenom, reste.join(" "));
 }
+
+/** Pour l'affichage d'un texte de Wakil : « 2 101 DH » ne doit jamais se couper en fin de ligne (espaces insécables). */
+export function insecables(texte: string): string {
+  return texte.replace(/(\d) (?=\d{3}\b)/g, "$1 ").replace(/ DH\b/g, " DH");
+}
