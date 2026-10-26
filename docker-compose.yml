@@ -5,11 +5,15 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?à définir dans .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
       POSTGRES_DB: ${POSTGRES_DB:?à définir dans .env}
+      AGENT_POSTGRES_USER: ${AGENT_POSTGRES_USER:?à définir dans .env}
+      AGENT_POSTGRES_PASSWORD: ${AGENT_POSTGRES_PASSWORD:?à définir dans .env}
+      AGENT_POSTGRES_DB: ${AGENT_POSTGRES_DB:?à définir dans .env}
     ports:
       - "127.0.0.1:5432:5432"  
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./apps/bank-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./apps/agent-api/base-agent.sh:/docker-entrypoint-initdb.d/02-base-agent.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

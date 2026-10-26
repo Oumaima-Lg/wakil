@@ -4,6 +4,7 @@ Chaque fonction reçoit le client_id de la session : il n'est jamais choisi par 
 """
 
 import os
+from decimal import Decimal
 
 import httpx
 
@@ -47,6 +48,39 @@ def transactions(client_id: int) -> list[dict]:
 def factures_impayees(client_id: int) -> list[dict]:
     factures = _get(client_id, f"/clients/{client_id}/factures")
     return [f for f in factures if f["statut"] == "impayee"]
+
+
+class RefusBanque(Exception):
+    """La banque refuse l'opération (409). detail : {"code", "message", montants…} (voir bank-api/app/operations.py)."""
+
+    def __init__(self, detail: dict):
+        super().__init__(detail.get("message", "Refus de la banque"))
+        self.detail = detail
+
+
+def _post(client_id: int, chemin: str, simulation: bool, json: dict | None = None) -> dict:
+    reponse = httpx.post(
+        f"{BANK_API_URL}{chemin}",
+        params={"simulation": "true"} if simulation else None,
+        json=json,
+        headers={"X-Client-Id": str(client_id)},
+        timeout=10,
+    )
+    if reponse.status_code == 409:
+        raise RefusBanque(reponse.json()["detail"])
+    reponse.raise_for_status()
+    return reponse.json()
+
+
+# Opérations. simulation=True : vérification à blanc, la banque vérifie et calcule tout puis annule.
+def payer(client_id: int, facture_id: int, simulation: bool = False) -> dict:
+    return _post(client_id, f"/factures/{facture_id}/payer", simulation)
+
+
+def virer(client_id: int, beneficiaire_id: int, montant: Decimal, simulation: bool = False) -> dict:
+    return _post(
+        client_id, "/virements", simulation, json={"beneficiaire_id": beneficiaire_id, "montant": str(montant)}
+    )
 
 
 # Lectures pour l'espace bancaire du front (pas des outils du LLM).

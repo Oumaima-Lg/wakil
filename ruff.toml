@@ -8,5 +8,5 @@ target-version = "py312"
 select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [lint.isort]
-# « app » est notre code (bank-api, agent-api) : ses imports forment un bloc à part.
-known-first-party = ["app"]
+# « app » et « tests » sont notre code (bank-api, agent-api) : leurs imports forment un bloc à part.
+known-first-party = ["app", "tests"]

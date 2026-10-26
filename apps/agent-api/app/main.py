@@ -7,24 +7,41 @@ import json
 import logging
 import queue
 import threading
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from decimal import Decimal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import banque, reponses
-from app.agent import config, nouveau_tour, wakil
+from app import agent, banque, reponses
+from app.agent import config, prochaine_entree
+from app.memoire import base_configuree, memoire_postgres
 from app.session import CLIENTS_DEMO, COOKIE, COOKIE_SECURISE, DUREE, ClientConnecte, creer_jeton
 
 journal = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def cycle_de_vie(app: FastAPI):
+    """Au démarrage (≈ @PostConstruct) : si la base de l'agent est configurée, les conversations vont dans PostgreSQL.
+    À l'arrêt (≈ @PreDestroy), le « with » ferme proprement les connexions."""
+    if base_configuree():
+        with memoire_postgres() as memoire:
+            app.state.wakil = agent.construire(memoire)
+            yield
+    else:
+        yield
+
+
 app = FastAPI(
     title="Wakil · agent",
     description="Agent bancaire en darija. **Données 100 % fictives – projet de démonstration.**",
+    lifespan=cycle_de_vie,
 )
+# Par défaut, conversations en mémoire vive (tests, ou base de l'agent non configurée).
+app.state.wakil = agent.wakil
 
 
 class DemandeSession(BaseModel):
@@ -121,20 +138,19 @@ def evenement(nom: str, donnees: dict) -> str:
 
 
 @app.post("/chat")
-def chat(message: Message, client_id: ClientConnecte) -> StreamingResponse:
+def chat(message: Message, client_id: ClientConnecte, request: Request) -> StreamingResponse:
     """Envoie un message à Wakil ; la réponse arrive en flux SSE, case par case.
 
-    Le client vient du jeton signé de la session, jamais du corps de la requête ni du LLM.
+    Le client vient du jeton signé de la session, jamais du corps de la requête ni du LLM. Si une opération attend
+    « Wach nconfirmi ? », le message est la réponse du client ; sinon, c'est une nouvelle demande.
     """
+    wakil = request.app.state.wakil
 
     def travailler(file: queue.Queue) -> None:
         """Fait tourner le graphe dans un fil à part et dépose chaque étape dans la file, puis « fin »."""
         try:
-            etapes = wakil.stream(
-                nouveau_tour(message.texte, client_id),
-                config(client_id, message.conversation_id),
-                stream_mode="updates",
-            )
+            conf = config(client_id, message.conversation_id)
+            etapes = wakil.stream(prochaine_entree(wakil, message.texte, client_id, conf), conf, stream_mode="updates")
             for etape in etapes:
                 file.put(("etape", etape))
         except Exception as panne:
@@ -160,6 +176,10 @@ def chat(message: Message, client_id: ClientConnecte) -> StreamingResponse:
                 yield evenement("erreur", {"texte": reponses.PANNE})
                 continue
             for noeud, ajout in contenu.items():
+                if noeud == "__interrupt__":
+                    # Le graphe s'est arrêté avant de toucher à l'argent : la carte « Wach nconfirmi ? » part au front.
+                    yield evenement("confirmation", ajout[0].value)
+                    continue
                 outil = ajout.get("outil", outil)
                 donnees = ajout.get("resultat", donnees)
                 erreur = ajout.get("erreur", erreur)

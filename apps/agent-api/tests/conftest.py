@@ -68,11 +68,24 @@ def salma(api):
     return api
 
 
-class FauxLLM:
-    """Doublure du LLM : choisit toujours le même outil et garde les messages reçus à chaque appel."""
+@pytest.fixture
+def connecter():
+    """Ouvre la session d'un client de démo dans un client HTTP neuf : chacun garde ses propres cookies."""
 
-    def __init__(self, outil=None):
+    def ouvrir(client_id):
+        http = TestClient(app)
+        http.post("/session", json={"client_id": client_id})
+        return http
+
+    return ouvrir
+
+
+class FauxLLM:
+    """Doublure du LLM : choisit toujours le même outil (avec ses paramètres) et garde les messages reçus."""
+
+    def __init__(self, outil=None, arguments=None):
         self.outil = outil
+        self.arguments = arguments or {}
         self.recus = []
 
     @property
@@ -81,7 +94,7 @@ class FauxLLM:
 
     def invoke(self, messages):
         self.recus.append(messages)
-        appels_outil = [{"name": self.outil, "args": {}, "id": "1"}] if self.outil else []
+        appels_outil = [{"name": self.outil, "args": self.arguments, "id": "1"}] if self.outil else []
         return AIMessage(content="", tool_calls=appels_outil)
 
 
@@ -89,8 +102,8 @@ class FauxLLM:
 def faux_llm(monkeypatch):
     """Remplace le LLM par une doublure qui choisit l'outil donné."""
 
-    def installer(outil=None):
-        faux = FauxLLM(outil)
+    def installer(outil=None, arguments=None):
+        faux = FauxLLM(outil, arguments)
         monkeypatch.setattr(agent, "llm", faux)
         return faux
 

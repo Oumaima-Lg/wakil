@@ -1,6 +1,5 @@
 """Tests de la route /chat (flux SSE), sans Ollama ni bank-api."""
 
-import json
 import time
 import uuid
 
@@ -9,17 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from app import agent, main, reponses
-
-
-def evenements(reponse):
-    """Découpe un flux SSE en liste de (nom de l'événement, données), en ignorant les commentaires comme un navigateur."""
-    resultat = []
-    for bloc in reponse.text.strip().split("\n\n"):
-        if bloc.startswith(":"):
-            continue  # « : battement »
-        champs = dict(ligne.split(": ", 1) for ligne in bloc.splitlines())
-        resultat.append((champs["event"], json.loads(champs["data"])))
-    return resultat
+from tests.sse import evenements
 
 
 def test_chat_envoie_les_etapes_puis_la_reponse(salma, faux_llm, monkeypatch):

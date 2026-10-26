@@ -17,6 +17,9 @@ pool = ConnectionPool(
     ),
     kwargs={"row_factory": dict_row},  # chaque ligne devient un dict : ligne["solde"]
     open=False,  # ouvert au démarrage de l'application (voir main.py)
+    # Vérifie chaque connexion avant de la prêter : après un redémarrage de PostgreSQL (base Azure arrêtée la nuit,
+    # par exemple), les connexions mortes sont remplacées au lieu de faire échouer les premières requêtes.
+    check=ConnectionPool.check_connection,
 )
 
 

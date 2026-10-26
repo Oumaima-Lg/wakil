@@ -42,3 +42,68 @@ def factures(resultat: list[dict]) -> str:
         return "3ndek facture wa7da mazal ma tkhelsat :\n" + lignes[0]
     total = sum(Decimal(f["montant"]) for f in resultat)
     return f"3ndek {len(resultat)} factures mazal ma tkhelsou ({dh(total)} f lmjmou3) :\n" + "\n".join(lignes)
+
+
+# Opérations (paiement, virement). Wakil parle de ce qu'il fait lui-même (nkhelless, nsifet) : la phrase est la même
+# pour une cliente et pour un client.
+QUEL_FOURNISSEUR = "Ach men facture bghiti nkhelless : l'eau w l'électricité, internet wla mobile ?"
+QUEL_BENEFICIAIRE = "L chkoun bghiti nsifet ? 3tini smiyto kif ma kayna f les bénéficiaires dyalek."
+QUEL_MONTANT = "Chhal bghiti nsifet ?"
+CONFIRMATION_INCOMPRISE = "Ma fhemtch jawab dyalek, donc ma dert walou. Ila bghiti, 3awed talab."
+# Après un « oui », si la banque ne répond pas, on ne sait pas si l'opération est passée : on le dit honnêtement.
+ERREUR_OPERATION = "Smeh lia, kayn mochkil f la banque. Chouf l'opérations dyalek 9bel ma t3awed."
+ANNULEE = {"paiement": "Safi, ma tkhelless walou.", "virement": "Safi, ma tsifet walou."}
+
+
+def pas_de_facture(fournisseur: str) -> str:
+    return f"Ma 3ndek hta facture dyal {fournisseur} mazal ma tkhelsat."
+
+
+def beneficiaire_inconnu(nom: str) -> str:
+    return f"Ma l9itch « {nom} » f les bénéficiaires dyalek."
+
+
+def beneficiaire_ambigu(nom: str) -> str:
+    return f"3ndek ktar men bénéficiaire smito « {nom} ». 3tini smiya kamla."
+
+
+def confirmation(operation: dict) -> str:
+    """Le texte de la carte « Wach nconfirmi ? », avec les montants de la vérification à blanc."""
+    apres = f"Solde dyalek men b3d : {dh(operation['nouveau_solde'])}."
+    if operation["type"] == "paiement":
+        return (
+            f"Hahiya l'facture li bghiti nkhelless : {operation['fournisseur']}, {dh(operation['montant'])}. {apres}\n"
+            "Wach nconfirmi l'paiement ? (Oui / La)"
+        )
+    return (
+        f"Hahowa l'virement li bghiti ndir : {dh(operation['montant'])} l {operation['beneficiaire']} "
+        f"({operation['beneficiaire_rib_masque']}). {apres}\nWach nconfirmi l'virement ? (Oui / La)"
+    )
+
+
+def operation_faite(type_operation: str, resultat: dict) -> str:
+    fait = "Tkhelssat" if type_operation == "paiement" else "Tsifet"
+    return f"{fait} ! Solde jdid dyalek : {dh(resultat['nouveau_solde'])}."
+
+
+def refus(type_operation: str, detail: dict) -> str:
+    """Le refus de la banque, expliqué avec ses propres chiffres (code et montants : voir bank-api)."""
+    quoi = "l'paiement" if type_operation == "paiement" else "l'virement"
+    code = detail.get("code")
+    if code == "solde_insuffisant":
+        besoin = (
+            f"l had l'facture ({dh(detail['montant'])})"
+            if type_operation == "paiement"
+            else f"bach nsifet {dh(detail['montant'])}"
+        )
+        return f"Smeh lia, l'banque rfdat {quoi} : solde dyalek ({dh(detail['solde'])}) ma kafich {besoin}."
+    if code == "plafond_depasse":
+        return (
+            f"Smeh lia, l'banque rfdat l'virement : {dh(detail['montant'])} "
+            f"kaydouz l'plafond dyalek ({dh(detail['plafond'])})."
+        )
+    if code == "facture_deja_payee":
+        return "Had l'facture deja tkhelsat."
+    if code == "virement_vers_soi":
+        return "Ma n9derch ndir virement l compte dyalek."
+    return f"Smeh lia, l'banque rfdat {quoi}."
