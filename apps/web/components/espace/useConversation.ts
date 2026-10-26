@@ -25,6 +25,8 @@ type Evenement =
   | { nom: "etape"; donnees: { noeud: string; outil: string | null } }
   | { nom: "reponse"; donnees: { texte: string; outil: string | null; donnees: unknown; erreur: boolean } }
   | { nom: "erreur"; donnees: { texte: string } }
+  // Paiement ou virement vérifié à blanc : le graphe attend « oui » ou « la » (la carte arrive au morceau 11)
+  | { nom: "confirmation"; donnees: { texte: string; type: "paiement" | "virement" } }
   | { nom: "fin"; donnees: Record<string, never> };
 
 const PANNE = "Smeh lia, Wakil ma khdamch daba. 3awed men ba3d.";
@@ -74,6 +76,9 @@ export function useConversation() {
             setAvancement("banque"); // le LLM a choisi un outil : le code interroge la banque
           } else if (nom === "reponse") {
             ajouter({ auteur: "wakil", ...donnees, demande: donnees.erreur ? texte : undefined });
+            repondu = true;
+          } else if (nom === "confirmation") {
+            ajouter({ auteur: "wakil", texte: donnees.texte, outil: "confirmation", donnees, erreur: false });
             repondu = true;
           } else if (nom === "erreur") {
             ajouter({ ...panne, texte: donnees.texte });
