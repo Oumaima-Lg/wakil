@@ -1,4 +1,4 @@
-"""Doublures communes : les tests tournent sans Ollama ni bank-api (comme des mocks Mockito)."""
+"""Doublures communes : les tests tournent sans Ollama ni serveur MCP (comme des mocks Mockito)."""
 
 import uuid
 
@@ -6,53 +6,16 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
-from app import agent, banque
+from app import agent
 from app.main import app
-
-PROFILS = {
-    1: ("madame", "Salma", "Alaoui", "Casablanca"),
-    2: ("monsieur", "Youssef", "Berrada", "Rabat"),
-    3: ("madame", "Nadia", "Tazi", "Marrakech"),
-}
+from app.session import COOKIE
+from tests.jetons import CLE_PUBLIQUE, jeton
 
 
 @pytest.fixture(autouse=True)
 def cle_de_test(monkeypatch):
-    """Une clé de signature de test : la vraie reste dans .env."""
-    monkeypatch.setenv("WAKIL_JWT_SECRET", "cle-de-test-de-wakil-assez-longue-pour-hs256")
-
-
-@pytest.fixture(autouse=True)
-def fausse_banque(monkeypatch):
-    """bank-api ne tourne pas pendant les tests : profil, compte et factures des clients de démo sont simulés."""
-
-    def profil(client_id):
-        civilite, prenom, nom, ville = PROFILS[client_id]
-        return {"id": client_id, "civilite": civilite, "prenom": prenom, "nom": nom, "ville": ville}
-
-    def compte(client_id):
-        return {"id": client_id, "rib_masque": "•••• 9114", "plafond_virement": "10000.00", "solde": "2350.00"}
-
-    monkeypatch.setattr(banque, "profil", profil)
-    monkeypatch.setattr(banque, "compte", compte)
-    monkeypatch.setattr(banque, "factures_impayees", lambda client_id: [{"montant": "312.00"}, {"montant": "249.00"}])
-    monkeypatch.setattr(
-        banque,
-        "operations",
-        lambda client_id: [{"id": 1, "date": "2026-10-21T09:00:00Z", "montant": "-57.98", "libelle": "Café"}],
-    )
-    monkeypatch.setattr(
-        banque,
-        "toutes_factures",
-        lambda client_id: [
-            {"id": 1, "fournisseur": "Eau & Électricité (démo)", "montant": "312.00", "statut": "impayee"}
-        ],
-    )
-    monkeypatch.setattr(
-        banque,
-        "beneficiaires",
-        lambda client_id: [{"id": 1, "nom": "Fatima Lahlou", "rib_masque": "•••• 8633", "interne": True}],
-    )
+    """La clé publique d'une paire de test : la vraie reste dans .env."""
+    monkeypatch.setenv("WAKIL_JWT_CLE_PUBLIQUE", CLE_PUBLIQUE)
 
 
 @pytest.fixture
@@ -63,18 +26,18 @@ def api():
 
 @pytest.fixture
 def salma(api):
-    """Un client HTTP déjà connecté en tant que Salma (le cookie de session est posé)."""
-    api.post("/session", json={"client_id": 1})
+    """Un client HTTP déjà connecté en tant que Salma : le cookie que portail-api aurait posé."""
+    api.cookies.set(COOKIE, jeton(1))
     return api
 
 
 @pytest.fixture
 def connecter():
-    """Ouvre la session d'un client de démo dans un client HTTP neuf : chacun garde ses propres cookies."""
+    """Connecte un client de démo dans un client HTTP neuf : chacun garde ses propres cookies."""
 
     def ouvrir(client_id):
         http = TestClient(app)
-        http.post("/session", json={"client_id": client_id})
+        http.cookies.set(COOKIE, jeton(client_id))
         return http
 
     return ouvrir

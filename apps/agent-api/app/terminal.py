@@ -1,4 +1,4 @@
-"""Discuter avec Wakil dans le terminal (bank-api et Ollama doivent tourner).
+"""Discuter avec Wakil dans le terminal (serveur MCP, bank-api et Ollama doivent tourner).
 
 Lancer (depuis apps/agent-api) : uv run python -m app.terminal 1     (1 = Salma, 2 = Youssef, 3 = Nadia)
 Les conversations restent en mémoire vive : elles disparaissent à la fermeture du terminal.

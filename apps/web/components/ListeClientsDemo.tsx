@@ -1,15 +1,15 @@
-import { AGENT_API_URL } from "@/lib/config";
+import { PORTAIL_API_URL } from "@/lib/config";
 
 import { CarteClientDemo, type ClientDemo } from "./CarteClientDemo";
 
 /**
  * Composant serveur (pas de « use client ») : il s'exécute sur le serveur Next.js, lit les clients de démo dans
- * agent-api, et envoie au navigateur du HTML déjà rempli. Le navigateur ne voit jamais l'adresse d'agent-api.
+ * portail-api, et envoie au navigateur du HTML déjà rempli. Le navigateur ne voit jamais l'adresse de portail-api.
  */
 export async function ListeClientsDemo() {
   let clients: ClientDemo[];
   try {
-    const reponse = await fetch(`${AGENT_API_URL}/clients-demo`);
+    const reponse = await fetch(`${PORTAIL_API_URL}/clients-demo`);
     if (!reponse.ok) throw new Error(String(reponse.status));
     clients = await reponse.json();
   } catch {

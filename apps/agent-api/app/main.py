@@ -1,32 +1,41 @@
 """API de l'agent Wakil.
 
-Lancer (depuis apps/agent-api, bank-api et Ollama démarrés) : uv run --env-file ../../.env fastapi dev --port 8001
+Une seule route : /chat. La session (cookie) et les pages de l'espace sont servies par portail-api ; agent-api ne parle
+jamais à bank-api, il passe par le serveur MCP (apps/mcp-tools).
+
+Lancer (depuis apps/agent-api, serveur MCP et Ollama démarrés) : uv run --env-file ../../.env fastapi dev --port 8001
 """
 
+import asyncio
 import json
 import logging
 import queue
 import threading
-from contextlib import asynccontextmanager, contextmanager
-from decimal import Decimal
+from contextlib import asynccontextmanager
 
-import httpx
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import agent, banque, reponses
+from app import agent, reponses
 from app.agent import carte_en_attente, config, prochaine_entree
 from app.memoire import base_configuree, memoire_postgres
-from app.session import CLIENTS_DEMO, COOKIE, COOKIE_SECURISE, DUREE, ClientConnecte, creer_jeton
+from app.session import ClientConnecte
 
 journal = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def cycle_de_vie(app: FastAPI):
-    """Au démarrage (≈ @PostConstruct) : si la base de l'agent est configurée, les conversations vont dans PostgreSQL.
-    À l'arrêt (≈ @PreDestroy), le « with » ferme proprement les connexions."""
+    """Au démarrage (≈ @PostConstruct) : l'agent demande au serveur MCP la liste de ses outils, et si la base de
+    l'agent est configurée, les conversations vont dans PostgreSQL. À l'arrêt (≈ @PreDestroy), le « with » ferme
+    proprement les connexions."""
+    try:
+        # tools/list maintenant plutôt qu'au premier message : le premier visiteur n'attend pas (le SDK MCP lance sa
+        # propre boucle, d'où le fil à part)
+        await asyncio.to_thread(agent.le_llm)
+    except Exception:
+        journal.warning("Serveur MCP injoignable au démarrage : la liste des outils sera demandée au premier message")
     if base_configuree():
         with memoire_postgres() as memoire:
             app.state.wakil = agent.construire(memoire)
@@ -44,10 +53,6 @@ app = FastAPI(
 app.state.wakil = agent.wakil
 
 
-class DemandeSession(BaseModel):
-    client_id: int
-
-
 class Message(BaseModel):
     conversation_id: str = Field(pattern=r"^[A-Za-z0-9-]{1,64}$")  # choisi par le navigateur (un UUID)
     texte: str = Field(min_length=1, max_length=500)  # limite la taille de ce qu'on envoie au LLM
@@ -55,79 +60,6 @@ class Message(BaseModel):
     facture_id: int | None = None
     # Bouton « Oui » ou « Non » d'une carte : l'identifiant de la carte à laquelle le client répond.
     carte: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,64}$")
-
-
-@contextmanager
-def banque_joignable():
-    """Si bank-api ne répond pas, le front reçoit un 503 clair au lieu d'une erreur 500."""
-    try:
-        yield
-    except httpx.HTTPError:
-        raise HTTPException(status_code=503, detail="Banque indisponible") from None
-
-
-def resume_client(client_id: int, scenario: str) -> dict:
-    compte = banque.compte(client_id)
-    factures = banque.factures_impayees(client_id)
-    return {
-        **banque.profil(client_id),
-        "scenario": scenario,
-        "solde": compte["solde"],
-        "plafond_virement": compte["plafond_virement"],
-        "factures_a_payer": len(factures),
-        "total_a_payer": str(sum((Decimal(f["montant"]) for f in factures), Decimal("0.00"))),
-    }
-
-
-@app.get("/clients-demo")
-def clients_demo() -> list[dict]:
-    """Les clients proposés sur l'écran d'accueil, avec un résumé de leur compte lu en direct dans la banque."""
-    with banque_joignable():
-        return [resume_client(client_id, scenario) for client_id, scenario in CLIENTS_DEMO.items()]
-
-
-@app.get("/moi")
-def moi(client_id: ClientConnecte) -> dict:
-    """Le profil du client connecté (celui du jeton de session)."""
-    with banque_joignable():
-        return banque.profil(client_id)
-
-
-@app.get("/moi/espace")
-def mon_espace(client_id: ClientConnecte) -> dict:
-    """Tout ce que l'espace bancaire affiche, en un seul appel (« backend for frontend »). Lecture seule."""
-    with banque_joignable():
-        return {
-            "profil": banque.profil(client_id),
-            "compte": banque.compte(client_id),
-            "operations": banque.operations(client_id),
-            "factures": banque.toutes_factures(client_id),
-            "beneficiaires": banque.beneficiaires(client_id),
-        }
-
-
-@app.post("/session")
-def ouvrir_session(demande: DemandeSession, response: Response) -> dict:
-    """Connexion à un client de démo : pose un cookie qui contient le jeton signé."""
-    if demande.client_id not in CLIENTS_DEMO:
-        raise HTTPException(status_code=404, detail="Client de démo inconnu")
-    with banque_joignable():
-        prenom = banque.profil(demande.client_id)["prenom"]
-    response.set_cookie(
-        COOKIE,
-        creer_jeton(demande.client_id),
-        max_age=int(DUREE.total_seconds()),
-        httponly=True,  # le JavaScript de la page ne peut pas lire le jeton (protection contre le vol par XSS)
-        samesite="lax",  # le cookie n'est pas envoyé par un POST venant d'un autre site (protection CSRF)
-        secure=COOKIE_SECURISE,
-    )
-    return {"client_id": demande.client_id, "prenom": prenom}
-
-
-@app.delete("/session", status_code=204)
-def fermer_session(response: Response) -> None:
-    """Déconnexion : efface le cookie."""
-    response.delete_cookie(COOKIE)
 
 
 # Pendant que le LLM réfléchit, le flux reste muet. Un proxy coupe une connexion muette trop longtemps (le rewrite de

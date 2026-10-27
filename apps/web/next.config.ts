@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-import { AGENT_API_URL } from "./lib/config";
+import { AGENT_API_URL, PORTAIL_API_URL } from "./lib/config";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -16,10 +16,14 @@ const nextConfig: NextConfig = {
       },
     },
   },
-  // Le navigateur appelle /api/… sur l'adresse du site, et Next.js transmet à agent-api (comme le proxy.conf.json
-  // d'Angular). Une seule adresse pour le navigateur : le cookie de session HttpOnly marche sans régler de CORS.
+  // Le navigateur appelle /api/… sur l'adresse du site, et Next.js transmet au bon service (comme le proxy.conf.json
+  // d'Angular) : le chat à agent-api, tout le reste (session, pages) à portail-api. Une seule adresse pour le
+  // navigateur : le cookie de session HttpOnly marche sans régler de CORS. La première règle qui correspond gagne.
   async rewrites() {
-    return [{ source: "/api/:chemin*", destination: `${AGENT_API_URL}/:chemin*` }];
+    return [
+      { source: "/api/chat", destination: `${AGENT_API_URL}/chat` },
+      { source: "/api/:chemin*", destination: `${PORTAIL_API_URL}/:chemin*` },
+    ];
   },
 };
 

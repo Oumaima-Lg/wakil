@@ -1,15 +1,18 @@
-"""Tests de la session : chaque test essaie de tromper le jeton d'une façon différente."""
+"""Tests de la session vue par agent-api : chaque test essaie de tromper le jeton d'une façon différente.
+
+agent-api ne crée aucun jeton (c'est portail-api) : il les vérifie avec la clé publique.
+"""
 
 import base64
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import httpx
-import jwt
+from cryptography.hazmat.primitives.asymmetric import rsa
 
-from app import agent, banque, reponses
-from app.session import COOKIE, creer_jeton
+from app import agent, reponses
+from app.session import COOKIE
+from tests.jetons import CLE_PUBLIQUE, jeton
 
 MESSAGE = {"conversation_id": "essai", "texte": "chhal bqa f compte dyali ?"}
 
@@ -19,84 +22,64 @@ def b64(donnees: dict) -> str:
     return base64.urlsafe_b64encode(json.dumps(donnees).encode()).rstrip(b"=").decode()
 
 
-def test_les_clients_de_demo_sont_proposes_avec_un_resume_de_leur_compte(api):
-    clients = api.get("/clients-demo").json()
-
-    assert [c["prenom"] for c in clients] == ["Salma", "Youssef", "Nadia"]
-    assert clients[0] == {
-        "id": 1,
-        "civilite": "madame",
-        "prenom": "Salma",
-        "nom": "Alaoui",
-        "ville": "Casablanca",
-        "scenario": "Cas normal",
-        "solde": "2350.00",
-        "plafond_virement": "10000.00",
-        "factures_a_payer": 2,
-        "total_a_payer": "561.00",
-    }
-
-
-def test_banque_injoignable_donne_une_erreur_503(api, monkeypatch):
-    def banque_en_panne(client_id):
-        raise httpx.ConnectError("bank-api ne répond pas")
-
-    monkeypatch.setattr(banque, "profil", banque_en_panne)
-
-    assert api.get("/clients-demo").status_code == 503
-
-
-def test_moi_renvoie_le_profil_du_client_connecte(salma):
-    assert salma.get("/moi").json()["prenom"] == "Salma"
-
-
-def test_moi_sans_session_refuse(api):
-    assert api.get("/moi").status_code == 401
-
-
-def test_ouvrir_une_session_pose_un_cookie_que_le_javascript_ne_peut_pas_lire(api):
-    reponse = api.post("/session", json={"client_id": 1})
-
-    assert reponse.json() == {"client_id": 1, "prenom": "Salma"}
-    cookie = reponse.headers["set-cookie"]
-    assert cookie.startswith(f"{COOKIE}=")
-    assert "HttpOnly" in cookie
-    assert "SameSite=lax" in cookie
-
-
-def test_un_client_qui_n_est_pas_de_demo_est_refuse(api):
-    assert api.post("/session", json={"client_id": 57}).status_code == 404
-
-
 def test_chat_sans_session_refuse(api):
     assert api.post("/chat", json=MESSAGE).status_code == 401
 
 
 def test_jeton_modifie_a_la_main_refuse(api):
-    entete, _, signature = creer_jeton(1).split(".")
-    contenu_falsifie = b64({"sub": "2", "exp": int((datetime.now(UTC) + timedelta(minutes=30)).timestamp())})
+    entete, _, signature = jeton(1).split(".")
+    exp = int((datetime.now(UTC) + timedelta(minutes=30)).timestamp())
+    contenu_falsifie = b64({"sub": "2", "iss": "portail-api", "aud": "agent-api", "exp": exp})
     api.cookies.set(COOKIE, f"{entete}.{contenu_falsifie}.{signature}")  # « je suis Youssef », sans la clé
 
     assert api.post("/chat", json=MESSAGE).status_code == 401
 
 
 def test_jeton_signe_avec_une_autre_cle_refuse(api):
-    exp = datetime.now(UTC) + timedelta(minutes=30)
-    api.cookies.set(COOKIE, jwt.encode({"sub": "2", "exp": exp}, "cle-inventee-par-un-attaquant-0123456789"))
+    cle_de_l_attaquant = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    api.cookies.set(COOKIE, jeton(2, cle=cle_de_l_attaquant))
+
+    assert api.post("/chat", json=MESSAGE).status_code == 401
+
+
+def test_jeton_hs256_signe_avec_la_cle_publique_refuse(api):
+    """Attaque classique (« confusion d'algorithme ») : la clé publique n'est pas secrète. Un attaquant s'en sert comme
+    mot de passe HS256 ; un serveur qui accepterait HS256 vérifierait avec cette même clé, et le jeton passerait."""
+    api.cookies.set(COOKIE, jeton(2, cle=CLE_PUBLIQUE, algorithme="HS256"))
 
     assert api.post("/chat", json=MESSAGE).status_code == 401
 
 
 def test_jeton_non_signe_alg_none_refuse(api):
     exp = int((datetime.now(UTC) + timedelta(minutes=30)).timestamp())
-    api.cookies.set(COOKIE, f"{b64({'alg': 'none', 'typ': 'JWT'})}.{b64({'sub': '2', 'exp': exp})}.")
+    contenu = {"sub": "2", "iss": "portail-api", "aud": "agent-api", "exp": exp}
+    api.cookies.set(COOKIE, f"{b64({'alg': 'none', 'typ': 'JWT'})}.{b64(contenu)}.")
 
     assert api.post("/chat", json=MESSAGE).status_code == 401
 
 
 def test_jeton_expire_refuse(api):
-    il_y_a_31_minutes = datetime.now(UTC) - timedelta(minutes=31)
-    api.cookies.set(COOKIE, creer_jeton(1, maintenant=il_y_a_31_minutes))
+    api.cookies.set(COOKIE, jeton(1, exp=datetime.now(UTC) - timedelta(minutes=1)))
+
+    assert api.post("/chat", json=MESSAGE).status_code == 401
+
+
+def test_jeton_destine_a_un_autre_service_refuse(api):
+    """Bien signé, mais destiné seulement à portail-api (« aud ») : agent-api le refuse."""
+    api.cookies.set(COOKIE, jeton(1, aud="portail-api"))
+
+    assert api.post("/chat", json=MESSAGE).status_code == 401
+
+
+def test_jeton_d_un_autre_emetteur_refuse(api):
+    api.cookies.set(COOKIE, jeton(1, iss="un-autre-service"))
+
+    assert api.post("/chat", json=MESSAGE).status_code == 401
+
+
+def test_jeton_sans_expiration_refuse(api):
+    """Un jeton sans « exp » serait valable pour toujours : refusé."""
+    api.cookies.set(COOKIE, jeton(1, exp=None))
 
     assert api.post("/chat", json=MESSAGE).status_code == 401
 
@@ -116,19 +99,7 @@ def test_l_en_tete_x_client_id_est_ignore(salma, faux_llm, monkeypatch):
     assert clients_appeles == [1]  # c'est bien Salma (le jeton), pas Youssef (l'en-tête)
 
 
-def test_apres_deconnexion_le_chat_est_refuse(salma):
-    assert salma.delete("/session").status_code == 204
-
-    assert salma.post("/chat", json=MESSAGE).status_code == 401
-
-
-def test_mon_espace_regroupe_tout_ce_que_le_front_affiche(salma):
-    espace = salma.get("/moi/espace").json()
-
-    assert set(espace) == {"profil", "compte", "operations", "factures", "beneficiaires"}
-    assert espace["profil"]["prenom"] == "Salma"
-    assert espace["compte"]["solde"] == "2350.00"
-
-
-def test_mon_espace_sans_session_refuse(api):
-    assert api.get("/moi/espace").status_code == 401
+def test_les_routes_du_portail_ne_sont_pas_ici(salma):
+    """La session et les pages sont servies par portail-api : agent-api n'a que /chat."""
+    assert salma.post("/session", json={"client_id": 2}).status_code == 404
+    assert salma.get("/moi/espace").status_code == 404

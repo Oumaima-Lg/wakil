@@ -5,12 +5,9 @@ aucune opération sans un « oui » explicite.
 """
 
 import os
-import re
 import unicodedata
-from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal, TypedDict
 
-import httpx
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -19,7 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import Command, interrupt
 
-from app import banque, reponses
+from app import outils, reponses
 
 SYSTEME = (
     "Tu es Wakil, l'assistant de la Banque Atlas Démo (banque fictive). "
@@ -31,57 +28,24 @@ SYSTEME = (
 )
 
 
-def description(nom: str, texte: str, parametres: dict | None = None) -> dict:
-    """Ce que le LLM voit d'un outil : un nom, une description et ses paramètres. Jamais le client_id : il vient
-    de la session."""
-    return {
-        "type": "function",
-        "function": {
-            "name": nom,
-            "description": texte,
-            "parameters": {"type": "object", "properties": parametres or {}, "required": list(parametres or {})},
-        },
-    }
+def lire(nom: str, cle: str | None = None):
+    """Un outil de lecture du serveur MCP. cle : la liste est rangée sous ce nom (« transactions », « factures »)."""
+
+    def appeler(client_id: int):
+        donnees = outils.appeler(client_id, nom, {})
+        return donnees[cle] if cle else donnees
+
+    return appeler
 
 
-# Les fournisseurs, tous fictifs. Le LLM choisit une clé courte, le code la traduit en nom exact.
-FOURNISSEURS = {"eau_electricite": "Eau & Électricité (démo)", "internet": "Internet (démo)", "mobile": "Mobile (démo)"}
-
-# Liste fermée : le LLM ne peut choisir que parmi ces outils. Les trois premiers lisent, les deux derniers paient.
+# Liste fermée : le LLM ne peut choisir que parmi ces outils, dont le serveur MCP donne la description et le schéma.
+# Les trois premiers lisent ; les deux derniers déplacent de l'argent, donc passent par la carte de confirmation.
 OUTILS = {
-    "consulter_solde": (banque.solde, reponses.solde),
-    "lister_transactions": (banque.transactions, reponses.transactions),
-    "lister_factures": (banque.factures_impayees, reponses.factures),
+    "consulter_solde": (lire("consulter_solde"), reponses.solde),
+    "lister_transactions": (lire("lister_transactions", "transactions"), reponses.transactions),
+    "lister_factures": (lire("lister_factures", "factures"), reponses.factures),
 }
 OPERATIONS = {"payer_facture": "paiement", "faire_virement": "virement"}
-DESCRIPTIONS = [
-    description("consulter_solde", "Donne le solde actuel du compte du client."),
-    description(
-        "lister_transactions", "Liste les dernières opérations du compte du client (dépenses, virements reçus)."
-    ),
-    description("lister_factures", "Montre les factures impayées du client, sans rien payer."),
-    description(
-        "payer_facture",
-        "Paye une facture impayée du client (eau et électricité, internet, mobile). En darija, le client dit "
-        "« khelless », « khalles », « nkhelless » ou « خلص ». Le client confirmera avant le paiement.",
-        {
-            "fournisseur": {
-                "type": "string",
-                "enum": list(FOURNISSEURS),
-                "description": "eau_electricite pour l'eau ou l'électricité, internet, ou mobile (téléphone).",
-            }
-        },
-    ),
-    description(
-        "faire_virement",
-        "Vire de l'argent à un bénéficiaire déjà enregistré par le client. En darija, le client dit « sifet », "
-        "« sift », « 7awel » ou « صيفط ». Le client confirmera avant le virement.",
-        {
-            "beneficiaire": {"type": "string", "description": "Le prénom ou le nom du bénéficiaire, tel qu'écrit."},
-            "montant": {"type": "number", "description": "Le montant en dirhams (DH)."},
-        },
-    ),
-]
 SALUTATIONS = {"salam", "slm", "salam 3likom", "salam alaykom", "سلام", "السلام عليكم"}
 # Accusés de réception et remerciements : ni une demande, ni du hors-sujet.
 POLITESSES = {
@@ -92,12 +56,19 @@ POLITESSES = {
 OUI = {"oui", "oui, confirmer", "ah", "iyeh", "iyyeh", "wakha", "yes", "ok", "confirmer", "نعم", "اه", "واخا"}
 NON = {"non", "non, annuler", "la", "lla", "no", "annuler", "لا"}
 
-# Nouveauté : LangChain remplace notre appel HTTP fait à la main vers Ollama.
-llm = ChatOllama(
-    model=os.environ.get("WAKIL_MODELE", "qwen3:4b-instruct"),
-    temperature=0,
-    num_predict=100,  # assez pour un appel d'outil ; son texte libre ne nous sert pas
-).bind_tools(DESCRIPTIONS)
+# Le LLM est créé au premier message, avec les outils que le serveur MCP annonce (tools/list).
+llm = None
+
+
+def le_llm():
+    global llm
+    if llm is None:
+        llm = ChatOllama(
+            model=os.environ.get("WAKIL_MODELE", "qwen3:4b-instruct"),
+            temperature=0,
+            num_predict=100,  # assez pour un appel d'outil ; son texte libre ne nous sert pas
+        ).bind_tools(outils.descriptions_pour_le_llm(set(OUTILS), set(OPERATIONS)))
+    return llm
 
 
 HISTORIQUE = 6  # le LLM voit les 6 derniers messages (3 échanges) : assez pour « c'est tout ? », et rapide
@@ -176,36 +147,6 @@ def simplifier(texte: str) -> str:
     return sans_accents.lower().strip().strip("!?.,;:، ")
 
 
-# Petits mots que le LLM laisse parfois devant le nom : « sifet 500 l Fatima » donne « l Fatima » (l = à, en darija).
-PARTICULES = {"l", "li", "le", "la", "a", "ila", "ل"}
-
-
-def trouver_beneficiaires(beneficiaires: list[dict], nom: str) -> list[dict]:
-    """Les bénéficiaires dont le nom contient tous les mots donnés (« Fatima », « fatima lahlou », « l Fatima »)."""
-    mots = [mot for mot in simplifier(nom).replace("'", " ").split() if mot not in PARTICULES]
-    if not mots:
-        return []
-    exacts = [b for b in beneficiaires if simplifier(b["nom"]).split() == mots]
-    return exacts or [b for b in beneficiaires if set(mots) <= set(simplifier(b["nom"]).split())]
-
-
-def lire_montant(valeur) -> Decimal | None:
-    """Le montant donné par le LLM (500, « 500 DH », « 1 000,50 ») en Decimal au centime, ou None s'il n'est pas valable.
-
-    On enlève seulement les espaces et « DH » : un « -50 » doit rester négatif, donc refusé, et pas devenir 50.
-    """
-    texte = re.sub(r"[\s\u00a0\u202f]", "", str(valeur)).replace(",", ".")
-    texte = re.sub(r"(?i)(dh|mad|dirhams?)$", "", texte)
-    try:
-        montant = Decimal(texte)
-        if not montant.is_finite() or montant != montant.quantize(Decimal("0.01")):  # « NaN », ou 12,345 DH
-            return None
-        montant = montant.quantize(Decimal("0.01"))
-    except InvalidOperation:
-        return None
-    return montant if montant > 0 else None
-
-
 def avant_comprendre(etat: Etat) -> Literal["preparer_operation", "saluer", "remercier", "comprendre"]:
     """Aiguillage de départ : un bouton « Payer avec Wakil », une salutation ou une politesse ne passent pas par le LLM."""
     if etat.get("outil") in OPERATIONS:
@@ -228,7 +169,7 @@ def remercier(etat: Etat) -> dict:
 
 def comprendre(etat: Etat) -> dict:
     """Le LLM lit la demande, avec les derniers messages pour le contexte, et choisit un outil (et ses paramètres) ou aucun."""
-    message = llm.invoke([SystemMessage(SYSTEME), *etat["messages"][-HISTORIQUE:]])
+    message = le_llm().invoke([SystemMessage(SYSTEME), *etat["messages"][-HISTORIQUE:]])
     appel = message.tool_calls[0] if message.tool_calls else None
     # Un nom d'outil inventé par le LLM est traité comme « aucun outil ».
     if appel is None or (appel["name"] not in OUTILS and appel["name"] not in OPERATIONS):
@@ -243,11 +184,11 @@ def apres_comprendre(etat: Etat) -> Literal["executer_outil", "preparer_operatio
 
 
 def executer_outil(etat: Etat) -> dict:
-    """Le code appelle bank-api avec le client_id de la session."""
+    """Le code appelle l'outil (serveur MCP) pour le client de la session."""
     appeler, _ = OUTILS[etat["outil"]]
     try:
         return {"resultat": appeler(etat["client_id"])}
-    except httpx.HTTPError:
+    except outils.OutilsIndisponibles:
         return {"erreur": True}
 
 
@@ -264,50 +205,21 @@ def refuser(etat: Etat) -> dict:
 
 
 def preparer_operation(etat: Etat) -> dict:
-    """Trouve la facture ou le bénéficiaire, puis demande à la banque une vérification à blanc.
+    """Demande au serveur MCP une vérification à blanc : il retrouve la facture ou le bénéficiaire, et la banque
+    vérifie ses règles sans rien exécuter (l'appel ne porte pas la confirmation du client).
 
-    Le résultat devient la carte « Wach nconfirmi ? ». Si la banque refuse déjà (solde, plafond…), Wakil le dit tout
-    de suite au lieu de faire confirmer une opération vouée à l'échec. Rien n'est payé ici.
+    Le résultat devient la carte « Wach nconfirmi ? ». Si quelque chose manque ou si la banque refuse déjà (solde,
+    plafond…), Wakil le dit tout de suite au lieu de faire confirmer une opération vouée à l'échec.
     """
-    client_id, arguments = etat["client_id"], etat.get("arguments") or {}
     type_operation = OPERATIONS[etat["outil"]]
     try:
-        if type_operation == "paiement" and "facture_id" in arguments:
-            # Bouton « Payer avec Wakil » : la facture doit être une facture impayée de ce client
-            impayees = banque.factures_impayees(client_id)
-            facture = next((f for f in impayees if f["id"] == arguments["facture_id"]), None)
-            if facture is None:
-                return dire(reponses.FACTURE_INTROUVABLE)
-            simulation = banque.payer(client_id, facture["id"], simulation=True)
-        elif type_operation == "paiement":
-            fournisseur = FOURNISSEURS.get(arguments.get("fournisseur"))
-            if fournisseur is None:
-                return dire(reponses.QUEL_FOURNISSEUR)
-            # S'il y en a plusieurs du même fournisseur, la plus ancienne d'abord (la banque les rend par id).
-            facture = next((f for f in banque.factures_impayees(client_id) if f["fournisseur"] == fournisseur), None)
-            if facture is None:
-                return dire(reponses.pas_de_facture(fournisseur))
-            simulation = banque.payer(client_id, facture["id"], simulation=True)
-        else:
-            nom = str(arguments.get("beneficiaire") or "").strip()
-            if not nom:
-                return dire(reponses.QUEL_BENEFICIAIRE)
-            candidats = trouver_beneficiaires(banque.beneficiaires(client_id), nom)
-            if not candidats:
-                return dire(reponses.beneficiaire_inconnu(nom))
-            if len(candidats) > 1:
-                return dire(reponses.beneficiaire_ambigu(nom))
-            montant = lire_montant(arguments.get("montant"))
-            if montant is None:
-                return dire(reponses.QUEL_MONTANT)
-            simulation = banque.virer(client_id, candidats[0]["id"], montant, simulation=True)
-            simulation["beneficiaire_id"] = candidats[0]["id"]
-    except banque.RefusBanque as refus:
+        apercu = outils.appeler(etat["client_id"], etat["outil"], etat.get("arguments") or {})
+    except outils.RefusOutil as refus:
         return dire(reponses.refus(type_operation, refus.detail))
-    except httpx.HTTPError:
+    except outils.OutilsIndisponibles:
         return {"erreur": True, **dire(reponses.ERREUR)}
 
-    operation = {"type": type_operation, **simulation}
+    operation = {"type": type_operation, **apercu}
     operation |= {
         "intro": reponses.INTRO[type_operation],
         "question": reponses.QUESTION[type_operation],
@@ -338,18 +250,22 @@ def apres_confirmation(etat: Etat) -> Literal["executer_operation", "annuler"]:
 
 
 def executer_operation(etat: Etat) -> dict:
-    """Le client a dit oui : la banque exécute pour de vrai, en revérifiant toutes ses règles."""
+    """Le client a dit oui : l'appel porte sa confirmation, la banque exécute pour de vrai et revérifie ses règles.
+
+    On renvoie les identifiants exacts de la carte (facture, bénéficiaire) : c'est bien l'opération affichée qui part.
+    """
     operation, client_id = etat["operation"], etat["client_id"]
     # À la reprise, la case « comprendre » n'est pas rejouée : on redonne l'outil pour l'événement envoyé au front.
     outil = {"outil": etat["outil"]}
+    if operation["type"] == "paiement":
+        arguments = {"facture_id": operation["facture_id"]}
+    else:
+        arguments = {"beneficiaire_id": operation["beneficiaire_id"], "montant": operation["montant"]}
     try:
-        if operation["type"] == "paiement":
-            resultat = banque.payer(client_id, operation["facture_id"])
-        else:
-            resultat = banque.virer(client_id, operation["beneficiaire_id"], Decimal(operation["montant"]))
-    except banque.RefusBanque as refus:  # la situation a changé entre la carte et le « oui »
+        resultat = outils.appeler(client_id, etat["outil"], arguments, confirme=True)
+    except outils.RefusOutil as refus:  # la situation a changé entre la carte et le « oui »
         return {**outil, "issue": "refusee", **dire(reponses.refus(operation["type"], refus.detail))}
-    except httpx.HTTPError:
+    except outils.OutilsIndisponibles:
         return {**outil, "issue": "erreur", "erreur": True, **dire(reponses.ERREUR_OPERATION)}
     return {
         **outil,

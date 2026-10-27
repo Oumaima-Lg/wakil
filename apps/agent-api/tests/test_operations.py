@@ -1,18 +1,20 @@
 """Paiements et virements : la confirmation est obligatoire, et seul un « oui » explicite fait bouger l'argent.
 
-La fausse banque note chaque appel (vérification à blanc ou vrai) : on sait exactement quand l'argent aurait bougé.
+Le faux serveur MCP suit le contrat du vrai (apps/mcp-tools) : sans confirmation dans l'appel, il ne fait qu'une
+vérification à blanc. Il note chaque appel : on sait exactement quand l'argent aurait bougé, et avec quoi.
 """
 
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
-from app import agent, banque, reponses
+from app import agent, outils, reponses
 from tests.sse import evenements
 
 EAU, INTERNET = "Eau & Électricité (démo)", "Internet (démo)"
+FOURNISSEURS = {"eau_electricite": EAU, "internet": INTERNET, "mobile": "Mobile (démo)"}
 FACTURES = {
     1: [{"id": 1, "fournisseur": EAU, "montant": "312.00"}, {"id": 2, "fournisseur": INTERNET, "montant": "249.00"}],
     2: [{"id": 7, "fournisseur": INTERNET, "montant": "349.00"}],
@@ -24,47 +26,89 @@ BENEFICIAIRES = {
 PLAFONDS = {1: Decimal("10000.00"), 2: Decimal("5000.00"), 3: Decimal("2000.00")}
 
 
-class FausseBanque:
-    """Doublure de bank-api pour les opérations, avec les vraies règles (solde, plafond) et les vrais refus 409."""
+def refus(code, **details):
+    return outils.RefusOutil({"code": code, "message": code, **details})
+
+
+class FauxServeurMcp:
+    """Doublure du serveur MCP (outils de paiement et de virement), avec les règles de la banque (solde, plafond)."""
 
     def __init__(self):
         self.soldes = {1: Decimal("2350.00"), 2: Decimal("150.00"), 3: Decimal("18500.00")}
-        self.appels = []  # (opération, client, facture ou bénéficiaire, montant, simulation)
+        self.appels = []  # à la banque : (opération, client, facture ou bénéficiaire, montant, simulation)
+        self.appels_mcp = []  # au serveur MCP : (outil, client, arguments, confirmation)
 
     @property
     def vrais_appels(self):
         return [appel for appel in self.appels if not appel[-1]]
 
-    def _refuser_si_solde_insuffisant(self, client_id, montant):
+    def appeler(self, client_id, nom, arguments, confirme=False):
+        self.appels_mcp.append((nom, client_id, arguments, confirme))
+        if nom == "payer_facture":
+            return self._payer(client_id, arguments, simulation=not confirme)
+        return self._virer(client_id, arguments, simulation=not confirme)
+
+    def _verifier_solde(self, client_id, montant):
         if montant > self.soldes[client_id]:
-            raise banque.RefusBanque(
-                {"code": "solde_insuffisant", "message": "Solde insuffisant",
-                 "solde": f"{self.soldes[client_id]:.2f}", "montant": f"{montant:.2f}"}
-            )  # fmt: skip
+            raise refus("solde_insuffisant", solde=f"{self.soldes[client_id]:.2f}", montant=f"{montant:.2f}")
 
-    def payer(self, client_id, facture_id, simulation=False):
-        facture = next(f for f in FACTURES[client_id] if f["id"] == facture_id)
+    def _payer(self, client_id, arguments, simulation):
+        factures = FACTURES.get(client_id, [])
+        if "facture_id" in arguments:
+            facture = next((f for f in factures if f["id"] == arguments["facture_id"]), None)
+            if facture is None:
+                raise refus("facture_introuvable")
+        elif arguments.get("fournisseur") in FOURNISSEURS:
+            nom = FOURNISSEURS[arguments["fournisseur"]]
+            facture = next((f for f in factures if f["fournisseur"] == nom), None)
+            if facture is None:
+                raise refus("facture_absente", fournisseur=nom)
+        else:
+            raise refus("fournisseur_manquant")
         montant = Decimal(facture["montant"])
-        self.appels.append(("paiement", client_id, facture_id, montant, simulation))
-        self._refuser_si_solde_insuffisant(client_id, montant)
-        nouveau_solde = self.soldes[client_id] - montant
-        if not simulation:
-            self.soldes[client_id] = nouveau_solde
-        return {**facture, "facture_id": facture_id, "nouveau_solde": f"{nouveau_solde:.2f}", "simulation": simulation}
-
-    def virer(self, client_id, beneficiaire_id, montant, simulation=False):
-        beneficiaire = next(b for b in BENEFICIAIRES[client_id] if b["id"] == beneficiaire_id)
-        self.appels.append(("virement", client_id, beneficiaire_id, montant, simulation))
-        if montant > PLAFONDS[client_id]:
-            raise banque.RefusBanque(
-                {"code": "plafond_depasse", "message": "Plafond de virement dépassé",
-                 "plafond": f"{PLAFONDS[client_id]:.2f}", "montant": f"{montant:.2f}"}
-            )  # fmt: skip
-        self._refuser_si_solde_insuffisant(client_id, montant)
+        self.appels.append(("paiement", client_id, facture["id"], montant, simulation))
+        self._verifier_solde(client_id, montant)
         nouveau_solde = self.soldes[client_id] - montant
         if not simulation:
             self.soldes[client_id] = nouveau_solde
         return {
+            **facture,
+            "facture_id": facture["id"],
+            "nouveau_solde": f"{nouveau_solde:.2f}",
+            "simulation": simulation,
+        }
+
+    def _virer(self, client_id, arguments, simulation):
+        beneficiaires = BENEFICIAIRES.get(client_id, [])
+        if "beneficiaire_id" in arguments:
+            candidats = [b for b in beneficiaires if b["id"] == arguments["beneficiaire_id"]]
+        else:
+            mots = str(arguments.get("beneficiaire") or "").lower().split()
+            if not mots:
+                raise refus("beneficiaire_manquant")
+            candidats = [b for b in beneficiaires if set(mots) <= set(b["nom"].lower().split())]
+            if len(candidats) > 1:
+                raise refus("beneficiaire_ambigu", nom=arguments["beneficiaire"])
+        if not candidats:
+            raise refus("beneficiaire_inconnu", nom=arguments.get("beneficiaire", ""))
+        try:
+            montant = Decimal(str(arguments.get("montant")))
+            valide = montant.is_finite() and montant > 0 and montant == montant.quantize(Decimal("0.01"))
+        except InvalidOperation:
+            valide = False
+        if not valide:
+            raise refus("montant_invalide")
+        montant = montant.quantize(Decimal("0.01"))
+        beneficiaire = candidats[0]
+        self.appels.append(("virement", client_id, beneficiaire["id"], montant, simulation))
+        if montant > PLAFONDS[client_id]:
+            raise refus("plafond_depasse", plafond=f"{PLAFONDS[client_id]:.2f}", montant=f"{montant:.2f}")
+        self._verifier_solde(client_id, montant)
+        nouveau_solde = self.soldes[client_id] - montant
+        if not simulation:
+            self.soldes[client_id] = nouveau_solde
+        return {
+            "beneficiaire_id": beneficiaire["id"],
             "beneficiaire": beneficiaire["nom"],
             "beneficiaire_rib_masque": beneficiaire["rib_masque"],
             "montant": f"{montant:.2f}",
@@ -75,12 +119,9 @@ class FausseBanque:
 
 @pytest.fixture
 def fausse_banque_operations(monkeypatch):
-    fausse = FausseBanque()
-    monkeypatch.setattr(banque, "factures_impayees", lambda client_id: FACTURES.get(client_id, []))
-    monkeypatch.setattr(banque, "beneficiaires", lambda client_id: BENEFICIAIRES.get(client_id, []))
-    monkeypatch.setattr(banque, "payer", fausse.payer)
-    monkeypatch.setattr(banque, "virer", fausse.virer)
-    return fausse
+    faux = FauxServeurMcp()
+    monkeypatch.setattr(outils, "appeler", faux.appeler)
+    return faux
 
 
 @pytest.fixture
@@ -213,12 +254,6 @@ def test_un_virement_trouve_le_beneficiaire_par_son_prenom(salma, faux_llm, faus
     assert fausse_banque_operations.vrais_appels == [("virement", 1, 1, Decimal("500.00"), False)]
 
 
-@pytest.mark.parametrize("nom", ["l Fatima", "l'Fatima", "à Fatima Lahlou", "LAHLOU"])
-def test_le_beneficiaire_est_trouve_malgre_les_petits_mots(salma, faux_llm, fausse_banque_operations, ecrire, nom):
-    faux_llm("faire_virement", {"beneficiaire": nom, "montant": 100})
-    assert dict(ecrire(salma, f"sifet 100 DH {nom}"))["confirmation"]["beneficiaire"] == "Fatima Lahlou"
-
-
 def test_beneficiaire_inconnu(salma, faux_llm, fausse_banque_operations, ecrire):
     faux_llm("faire_virement", {"beneficiaire": "Mehdi", "montant": 200})
     assert reponse(ecrire(salma, "sifet 200 l Mehdi")) == reponses.beneficiaire_inconnu("Mehdi")
@@ -231,7 +266,7 @@ def test_deux_beneficiaires_du_meme_prenom_on_demande_le_nom_complet(
     assert reponse(ecrire(connecter(3), "sifet 200 l Fatima")) == reponses.beneficiaire_ambigu("Fatima")
 
 
-@pytest.mark.parametrize("montant", [0, -50, "-50", "bezaf", None, "NaN", "12.345"])
+@pytest.mark.parametrize("montant", [0, -50, "bezaf", None])  # la lecture fine des montants : voir mcp-tools
 def test_montant_absent_ou_invalide_on_demande_combien(salma, faux_llm, fausse_banque_operations, ecrire, montant):
     faux_llm("faire_virement", {"beneficiaire": "Fatima", "montant": montant})
     assert reponse(ecrire(salma, "sifet l Fatima")) == reponses.QUEL_MONTANT
@@ -239,7 +274,7 @@ def test_montant_absent_ou_invalide_on_demande_combien(salma, faux_llm, fausse_b
 
 
 def test_virement_au_dessus_du_plafond_refuse_d_avance(connecter, faux_llm, fausse_banque_operations, ecrire):
-    faux_llm("faire_virement", {"beneficiaire": "Fatima Lahlou", "montant": "3 000 DH"})
+    faux_llm("faire_virement", {"beneficiaire": "Fatima Lahlou", "montant": 3000})
 
     recus = ecrire(connecter(3), "sifet 3000 DH l Fatima Lahlou")
 
@@ -331,3 +366,14 @@ def test_l_issue_indique_ce_qu_est_devenue_la_carte(
     faux_llm()
     ecrire(salma, "Khelless liya l'eau", facture_id=1)
     assert issue(ecrire(salma, reponse_client)) == attendu
+
+
+def test_le_oui_part_avec_la_confirmation_et_les_identifiants_exacts(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux_llm("faire_virement", {"beneficiaire": "fatima", "montant": 500})
+    ecrire(salma, "sifet 500 DH l fatima")
+    ecrire(salma, "Oui")
+
+    assert fausse_banque_operations.appels_mcp == [
+        ("faire_virement", 1, {"beneficiaire": "fatima", "montant": 500}, False),  # vérification à blanc
+        ("faire_virement", 1, {"beneficiaire_id": 1, "montant": "500.00"}, True),  # le « oui » : la carte exacte
+    ]

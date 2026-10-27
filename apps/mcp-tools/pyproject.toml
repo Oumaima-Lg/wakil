@@ -1,0 +1,29 @@
+[project]
+name = "mcp-tools"
+version = "0.1.0"
+description = "Serveur MCP de la Banque Atlas Démo : les outils de Wakil. Données 100 % fictives."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp>=2.3",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]  # permet aux tests de faire « from app.serveur import … »
+
+# Contrats d'architecture (équivalent d'ArchUnit), vérifiés par : uv run lint-imports
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Le déroulé des outils ne dépend pas de MCP : serveur.py seul fait le branchement"
+type = "forbidden"
+source_modules = ["app.operations", "app.recherche", "app.banque"]
+forbidden_modules = ["mcp"]

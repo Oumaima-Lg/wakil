@@ -7,7 +7,7 @@ import httpx
 import pytest
 from langchain_core.messages import AIMessage
 
-from app import agent, main, reponses
+from app import agent, main, outils, reponses
 from tests.sse import evenements
 
 
@@ -50,7 +50,7 @@ def test_banque_injoignable_la_reponse_le_signale(salma, faux_llm, monkeypatch):
     faux_llm("consulter_solde")
 
     def banque_en_panne(client_id):
-        raise httpx.ConnectError("bank-api ne répond pas")
+        raise outils.OutilsIndisponibles("le serveur MCP ne répond pas")
 
     monkeypatch.setitem(agent.OUTILS, "consulter_solde", (banque_en_panne, reponses.solde))
 

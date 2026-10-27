@@ -90,10 +90,28 @@ def operation_faite(type_operation: str, resultat: dict) -> str:
     return f"{fait} ! Solde jdid dyalek : {dh(resultat['nouveau_solde'])}."
 
 
+# Ce qui manque à la demande, d'après le serveur MCP (codes : voir mcp-tools/app/serveur.py).
+MANQUES = {
+    "fournisseur_manquant": QUEL_FOURNISSEUR,
+    "facture_introuvable": FACTURE_INTROUVABLE,
+    "beneficiaire_manquant": QUEL_BENEFICIAIRE,
+    "montant_invalide": QUEL_MONTANT,
+}
+
+
 def refus(type_operation: str, detail: dict) -> str:
-    """Le refus de la banque, expliqué avec ses propres chiffres (code et montants : voir bank-api)."""
+    """Ce qui empêche l'opération, expliqué au client : il manque quelque chose à la demande (serveur MCP), ou la
+    banque refuse, avec ses propres chiffres (codes et montants : voir bank-api)."""
     quoi = "l'paiement" if type_operation == "paiement" else "l'virement"
     code = detail.get("code")
+    if code in MANQUES:
+        return MANQUES[code]
+    if code == "facture_absente":
+        return pas_de_facture(detail["fournisseur"])
+    if code == "beneficiaire_inconnu":
+        return beneficiaire_inconnu(detail.get("nom", ""))
+    if code == "beneficiaire_ambigu":
+        return beneficiaire_ambigu(detail["nom"])
     if code == "solde_insuffisant":
         besoin = (
             f"l had l'facture ({dh(detail['montant'])})"

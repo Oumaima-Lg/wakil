@@ -5,6 +5,8 @@ docs/recherche-portfolio-2026.md
 .env
 .env.*
 !.env.example
+*.pem
+*.key
 
 # Python
 __pycache__/

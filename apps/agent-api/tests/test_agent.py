@@ -2,10 +2,9 @@
 
 import uuid
 
-import httpx
 import pytest
 
-from app import agent, reponses
+from app import agent, outils, reponses
 
 
 def fausse_banque(resultat, clients_appeles=None):
@@ -18,7 +17,7 @@ def fausse_banque(resultat, clients_appeles=None):
 
 
 def banque_en_panne(client_id):
-    raise httpx.ConnectError("bank-api ne répond pas")
+    raise outils.OutilsIndisponibles("le serveur MCP ne répond pas")
 
 
 def test_un_simple_salut_ne_passe_pas_par_le_llm(faux_llm, tour):
