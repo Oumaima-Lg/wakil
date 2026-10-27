@@ -6,6 +6,7 @@ aucune opération sans un « oui » explicite.
 
 import os
 import unicodedata
+from dataclasses import asdict
 from typing import Annotated, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
@@ -16,7 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import Command, interrupt
 
-from app import outils, reponses
+from app import faq, outils, reponses
 
 SYSTEME = (
     "Tu es Wakil, l'assistant de la Banque Atlas Démo (banque fictive). "
@@ -24,18 +25,21 @@ SYSTEME = (
     "Si la demande concerne son compte, appelle l'outil adapté. "
     "Pour payer une facture ou faire un virement, appelle l'outil avec ses paramètres : le client confirmera "
     "toujours avant que la banque n'exécute quoi que ce soit. N'invente jamais un montant ni un bénéficiaire. "
-    "Sinon, réponds en darija que tu ne t'occupes que de la banque."
+    "Pour une question générale sur la banque ou sur toi (frais, plafond, délais, bénéficiaires, carte perdue, codes, "
+    "découvert, ce que tu sais faire), appelle question_faq. "
+    "Sinon, si la demande est hors sujet, réponds en darija que tu ne t'occupes que de la banque."
 )
 
 
 def lire(nom: str, cle: str | None = None):
-    """Un outil de lecture du serveur MCP. cle : la liste est rangée sous ce nom (« transactions », « factures »)."""
+    """Fabrique la lecture d'un outil du serveur MCP : une fonction qui garde nom et cle, et n'attend plus que le
+    client. cle : la liste est rangée sous ce nom (« transactions », « factures »)."""
 
-    def appeler(client_id: int):
+    def lecture(client_id: int):
         donnees = outils.appeler(client_id, nom, {})
         return donnees[cle] if cle else donnees
 
-    return appeler
+    return lecture
 
 
 # Liste fermée : le LLM ne peut choisir que parmi ces outils, dont le serveur MCP donne la description et le schéma.
@@ -46,6 +50,21 @@ OUTILS = {
     "lister_factures": (lire("lister_factures", "factures"), reponses.factures),
 }
 OPERATIONS = {"payer_facture": "paiement", "faire_virement": "virement"}
+# La FAQ n'est pas un outil de la banque : elle vit dans agent-api (voir faq.py), sa description est donc écrite ici.
+# Sans paramètre : on cherche avec la phrase du client, pas avec une reformulation du LLM.
+OUTIL_FAQ = "question_faq"
+DESCRIPTION_FAQ = {
+    "type": "function",
+    "function": {
+        "name": OUTIL_FAQ,
+        "description": (
+            "Répond aux questions générales sur la Banque Atlas Démo et sur Wakil : frais et tarifs, plafond et délai "
+            "des virements, bénéficiaires, carte perdue ou volée, codes et sécurité, découvert, données, horaires. "
+            "Pas pour le compte du client (solde, opérations, factures à payer), ni pour payer ou virer."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
 SALUTATIONS = {"salam", "slm", "salam 3likom", "salam alaykom", "سلام", "السلام عليكم"}
 # Accusés de réception et remerciements : ni une demande, ni du hors-sujet.
 POLITESSES = {
@@ -56,7 +75,7 @@ POLITESSES = {
 OUI = {"oui", "oui, confirmer", "ah", "iyeh", "iyyeh", "wakha", "yes", "ok", "confirmer", "نعم", "اه", "واخا"}
 NON = {"non", "non, annuler", "la", "lla", "no", "annuler", "لا"}
 
-# Le LLM est créé au premier message, avec les outils que le serveur MCP annonce (tools/list).
+# Le LLM est créé au premier message, avec les outils que le serveur MCP annonce (tools/list), plus la FAQ.
 llm = None
 
 
@@ -67,11 +86,12 @@ def le_llm():
             model=os.environ.get("WAKIL_MODELE", "qwen3:4b-instruct"),
             temperature=0,
             num_predict=100,  # assez pour un appel d'outil ; son texte libre ne nous sert pas
-        ).bind_tools(outils.descriptions_pour_le_llm(set(OUTILS), set(OPERATIONS)))
+        ).bind_tools([*outils.descriptions_pour_le_llm(set(OUTILS), set(OPERATIONS)), DESCRIPTION_FAQ])
     return llm
 
 
 HISTORIQUE = 6  # le LLM voit les 6 derniers messages (3 échanges) : assez pour « c'est tout ? », et rapide
+REFUS_CACHES = {reponses.REFUS, reponses.FAQ_INTROUVABLE}  # jamais montrés au LLM (voir comprendre)
 
 
 class Etat(TypedDict, total=False):
@@ -168,26 +188,34 @@ def remercier(etat: Etat) -> dict:
 
 
 def comprendre(etat: Etat) -> dict:
-    """Le LLM lit la demande, avec les derniers messages pour le contexte, et choisit un outil (et ses paramètres) ou aucun."""
-    message = le_llm().invoke([SystemMessage(SYSTEME), *etat["messages"][-HISTORIQUE:]])
+    """Le LLM lit la demande, avec les derniers messages pour le contexte, et choisit un outil (et ses paramètres) ou aucun.
+
+    Les refus restent affichés dans le chat, mais le LLM ne les lit pas : un petit modèle qui vient de refuser a
+    tendance à refuser encore (mesuré le 27/10/2026 : « comment ajouter un Bénéficiaire ? » allait à la FAQ seule,
+    et au refus après deux refus).
+    """
+    historique = [m for m in etat["messages"] if not (isinstance(m, AIMessage) and m.content in REFUS_CACHES)]
+    message = le_llm().invoke([SystemMessage(SYSTEME), *historique[-HISTORIQUE:]])
     appel = message.tool_calls[0] if message.tool_calls else None
     # Un nom d'outil inventé par le LLM est traité comme « aucun outil ».
-    if appel is None or (appel["name"] not in OUTILS and appel["name"] not in OPERATIONS):
+    if appel is None or appel["name"] not in {*OUTILS, *OPERATIONS, OUTIL_FAQ}:
         return {"outil": None}
     return {"outil": appel["name"], "arguments": appel.get("args") or {}}
 
 
-def apres_comprendre(etat: Etat) -> Literal["executer_outil", "preparer_operation", "refuser"]:
+def apres_comprendre(etat: Etat) -> Literal["executer_outil", "preparer_operation", "repondre_faq", "refuser"]:
     if etat["outil"] in OPERATIONS:
         return "preparer_operation"
+    if etat["outil"] == OUTIL_FAQ:
+        return "repondre_faq"
     return "executer_outil" if etat["outil"] else "refuser"
 
 
 def executer_outil(etat: Etat) -> dict:
     """Le code appelle l'outil (serveur MCP) pour le client de la session."""
-    appeler, _ = OUTILS[etat["outil"]]
+    lecture, _ = OUTILS[etat["outil"]]
     try:
-        return {"resultat": appeler(etat["client_id"])}
+        return {"resultat": lecture(etat["client_id"])}
     except outils.OutilsIndisponibles:
         return {"erreur": True}
 
@@ -202,6 +230,17 @@ def repondre(etat: Etat) -> dict:
 
 def refuser(etat: Etat) -> dict:
     return dire(reponses.REFUS)
+
+
+def repondre_faq(etat: Etat) -> dict:
+    """La fiche de la FAQ la plus proche de la phrase du client (ses mots, pas ceux du LLM), citée telle quelle."""
+    try:
+        trouvaille = faq.chercher(etat["demande"])
+    except faq.FaqIndisponible:
+        return {"erreur": True, **dire(reponses.FAQ_INDISPONIBLE)}
+    if trouvaille is None:  # aucune fiche assez proche : on le dit au lieu d'en citer une qui ne répond pas
+        return dire(reponses.FAQ_INTROUVABLE)
+    return {"resultat": asdict(trouvaille), **dire(reponses.faq(trouvaille.titre, trouvaille.texte))}
 
 
 def preparer_operation(etat: Etat) -> dict:
@@ -290,6 +329,7 @@ graphe.add_node("comprendre", comprendre)
 graphe.add_node("executer_outil", executer_outil)
 graphe.add_node("repondre", repondre)
 graphe.add_node("refuser", refuser)
+graphe.add_node("repondre_faq", repondre_faq)
 graphe.add_node("preparer_operation", preparer_operation)
 graphe.add_node("demander_confirmation", demander_confirmation)
 graphe.add_node("executer_operation", executer_operation)
@@ -299,7 +339,7 @@ graphe.add_conditional_edges("comprendre", apres_comprendre)
 graphe.add_edge("executer_outil", "repondre")
 graphe.add_conditional_edges("preparer_operation", apres_preparation)
 graphe.add_conditional_edges("demander_confirmation", apres_confirmation)
-for fin in ("saluer", "remercier", "repondre", "refuser", "executer_operation", "annuler"):
+for fin in ("saluer", "remercier", "repondre", "refuser", "repondre_faq", "executer_operation", "annuler"):
     graphe.add_edge(fin, END)
 
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Attention, Cadenas, Coche, Echange, Etoile, Recu } from "@/components/icones";
+import { Attention, Cadenas, Coche, Echange, Etoile, Info, Recu } from "@/components/icones";
 import { jour } from "@/lib/espace";
 import { dh, insecables } from "@/lib/format";
 import type { Facture, Operation } from "@/lib/types";
@@ -11,6 +11,9 @@ import { montantSigne } from "./elements";
 import type { Avancement, Carte, MessageWakil, StatutCarte } from "./useConversation";
 
 const BULLE = "max-w-[90%] rounded-[20px] px-3.75 py-2.5 text-[15px] leading-normal";
+
+/** Une fiche de la FAQ retrouvée par agent-api (voir app/faq.py). */
+type FicheFaq = { fiche: string; titre: string; texte: string; similarite: number };
 
 // Une suggestion par façon d'écrire la darija : lettres latines, lettres arabes, mélange avec le français.
 const SUGGESTIONS = [
@@ -257,6 +260,22 @@ function Contenu({ message }: { message: MessageWakil }) {
           </>
         );
       }
+      case "question_faq": {
+        // Le texte de la fiche est cité tel quel : en citation, avec sa source.
+        const fiche = message.donnees as FicheFaq;
+        return (
+          <>
+            <p className="mb-2">{insecables(intro)}</p>
+            <blockquote lang="fr" className="border-l-2 border-accent pl-3 text-[14px] leading-relaxed text-texte-2">
+              {insecables(fiche.texte)}
+            </blockquote>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-attenue">
+              <Info taille={14} />
+              Source : FAQ de la Banque Atlas Démo
+            </p>
+          </>
+        );
+      }
     }
   }
   return (
@@ -266,12 +285,18 @@ function Contenu({ message }: { message: MessageWakil }) {
   );
 }
 
-/** Pendant la réponse : Wakil lit la demande (le LLM), puis interroge la banque. */
+const EN_COURS_TEXTE: Record<Exclude<Avancement, null>, string> = {
+  lecture: "Kanqra talab dyalek…",
+  banque: "Kanchouf f la banque…",
+  faq: "Kanqelleb f la FAQ…",
+};
+
+/** Pendant la réponse : Wakil lit la demande (le LLM), puis interroge la banque ou cherche dans la FAQ. */
 export function IndicateurAvancement({ etat }: { etat: Exclude<Avancement, null> }) {
   return (
     <li className="flex">
       <div className={`${BULLE} flex flex-col gap-2 rounded-bl-md bg-surface-2 text-sm`}>
-        {etat === "banque" && (
+        {etat !== "lecture" && (
           <p className="flex items-center gap-2.5 text-attenue">
             <Coche taille={16} className="text-accent" />
             Fhemt talab dyalek
@@ -279,7 +304,7 @@ export function IndicateurAvancement({ etat }: { etat: Exclude<Avancement, null>
         )}
         <p className="flex items-center gap-2.5">
           <Points />
-          {etat === "lecture" ? "Kanqra talab dyalek…" : "Kanchouf f la banque…"}
+          {EN_COURS_TEXTE[etat]}
         </p>
       </div>
     </li>

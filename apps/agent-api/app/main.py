@@ -17,9 +17,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import agent, reponses
+from app import agent, faq, reponses
 from app.agent import carte_en_attente, config, prochaine_entree
-from app.memoire import base_configuree, memoire_postgres
+from app.memoire import base_configuree, memoire_postgres, pool_agent
 from app.session import ClientConnecte
 
 journal = logging.getLogger(__name__)
@@ -28,8 +28,8 @@ journal = logging.getLogger(__name__)
 @asynccontextmanager
 async def cycle_de_vie(app: FastAPI):
     """Au démarrage (≈ @PostConstruct) : l'agent demande au serveur MCP la liste de ses outils, et si la base de
-    l'agent est configurée, les conversations vont dans PostgreSQL. À l'arrêt (≈ @PreDestroy), le « with » ferme
-    proprement les connexions."""
+    l'agent est configurée, les conversations vont dans PostgreSQL et la FAQ se branche sur ses vecteurs. À l'arrêt
+    (≈ @PreDestroy), le « with » ferme proprement les connexions."""
     try:
         # tools/list maintenant plutôt qu'au premier message : le premier visiteur n'attend pas (le SDK MCP lance sa
         # propre boucle, d'où le fil à part)
@@ -37,8 +37,13 @@ async def cycle_de_vie(app: FastAPI):
     except Exception:
         journal.warning("Serveur MCP injoignable au démarrage : la liste des outils sera demandée au premier message")
     if base_configuree():
-        with memoire_postgres() as memoire:
-            app.state.wakil = agent.construire(memoire)
+        with pool_agent() as pool:
+            app.state.wakil = agent.construire(memoire_postgres(pool))
+            try:
+                if faq.configurer(pool) == 0:
+                    journal.warning("FAQ vide pour le modèle %s : lancer python -m app.faq", faq.MODELE)
+            except faq.FaqIndisponible as raison:
+                journal.warning("FAQ indisponible : %s", raison)  # le reste de Wakil marche sans elle
             yield
     else:
         yield

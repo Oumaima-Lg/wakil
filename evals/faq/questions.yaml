@@ -1,0 +1,69 @@
+# Questions de test de la recherche dans la FAQ (données 100 % fictives).
+#
+# Règle : aucune de ces phrases ne figure dans data/faq/faq.yaml. Sinon, la recherche retrouverait la phrase
+# elle-même et la mesure tricherait (fuite de données).
+# fiche : l'id de la fiche attendue (data/faq/faq.yaml), ou null si la question n'est pas une question de FAQ
+# (une demande sur le compte, que le LLM doit envoyer à un outil, ou du hors-sujet). Ces dernières servent à
+# choisir le seuil : leur meilleur score doit rester sous le seuil.
+# outil : pour une demande sur le compte, l'outil que le LLM doit choisir (mesure du routage, evals/faq/routage.py).
+# Les questions de FAQ attendent l'outil question_faq ; le hors-sujet n'attend aucun outil.
+
+# --- Lettres arabes ---
+- {question: "شحال كيتخلص الحساب فالشهر؟", ecriture: arabe, fiche: frais}
+- {question: "واش نقدر نصيفط عشرين ألف درهم مرة وحدة؟", ecriture: arabe, fiche: plafond}
+- {question: "الفلوس اللي صيفطت لخويا إمتى غادي توصل؟", ecriture: arabe, fiche: delai-virement}
+- {question: "بغيت نزيد صاحبي فالليستة باش نصيفط ليه", ecriture: arabe, fiche: beneficiaires}
+- {question: "سرقو ليا البزطام والكارطة كانت فيه", ecriture: arabe, fiche: carte-perdue}
+- {question: "واحد عيط ليا وطلب الكود اللي جاني فالميساج", ecriture: arabe, fiche: securite}
+- {question: "كاينة شي عملية فالحساب ديالي ما عرفتهاش", ecriture: arabe, fiche: contester}
+- {question: "إلا ما كفاش الصولد واش غادي تخلص الفاتورة؟", ecriture: arabe, fiche: decouvert}
+- {question: "واش المعلومات ديالي كتمشي لشي بلاصة؟", ecriture: arabe, fiche: donnees}
+- {question: "واش نقدر نهضر معاك فالليل؟", ecriture: arabe, fiche: horaires}
+
+# --- Lettres latines (arabizi) ---
+- {question: "wach kaykhlsoni ila sifet l chi bank khra ?", ecriture: latin, fiche: frais}
+- {question: "ch7al l7ed dyal l virement l wa7ed ?", ecriture: latin, fiche: plafond}
+- {question: "sift lflous l mama, imta twslha ?", ecriture: latin, fiche: delai-virement}
+- {question: "kifach nkhelles facture dyal telephone ?", ecriture: latin, fiche: factures}
+- {question: "3lach kaytl3 lia had l carte dyal confirmation ?", ecriture: latin, fiche: confirmation}
+- {question: "carte dyali mab9atch 3endi, tal9at lia", ecriture: latin, fiche: carte-perdue}
+- {question: "wach nsifet lik mot de passe bach tchouf l compte ?", ecriture: latin, fiche: securite}
+- {question: "ma3endich flous bzaf, wach t9der tkhelles b credit ?", ecriture: latin, fiche: decouvert}
+- {question: "chno lkhdma li kadirha nta ?", ecriture: latin, fiche: wakil}
+- {question: "wach had l'application dyal bss7 wla ghi demo ?", ecriture: latin, fiche: donnees}
+
+# --- Mélange darija et français ---
+- {question: "les virements wach payants ?", ecriture: melange, fiche: frais}
+- {question: "le maximum li n9der nvirer f une seule fois ch7al ?", ecriture: melange, fiche: plafond}
+- {question: "le virement kaykhd combien de temps ?", ecriture: melange, fiche: delai-virement}
+- {question: "ajouter un nouveau bénéficiaire, wach possible ?", ecriture: melange, fiche: beneficiaires}
+- {question: "la facture d'électricité, wach t9der tpayiha ?", ecriture: melange, fiche: factures}
+- {question: "si je dis non f la confirmation chno kayw9e3 ?", ecriture: melange, fiche: confirmation}
+- {question: "j'ai perdu ma carte, chno khassni ndir ?", ecriture: melange, fiche: carte-perdue}
+- {question: "kayna une opération bizarre f le relevé dyali", ecriture: melange, fiche: contester}
+- {question: "le découvert wach autorisé ?", ecriture: melange, fiche: decouvert}
+- {question: "Wakil disponible le weekend ?", ecriture: melange, fiche: horaires}
+
+# --- Vraies questions d'Oumaima (conversation du 27/10/2026), telles qu'elle les a écrites ---
+- {question: "bghite nzide benificaire", ecriture: latin, fiche: beneficiaires}
+- {question: "chnahiya fonction dyalke ?", ecriture: latin, fiche: wakil}
+- {question: "quel est ton role ?", ecriture: francais, fiche: wakil}
+- {question: "quels sont tes services ?", ecriture: francais, fiche: wakil}
+- {question: "5adamate dyalke ?", ecriture: latin, fiche: wakil}
+- {question: "chno howa plafond dyali", ecriture: latin, fiche: plafond}
+- {question: "comment ajouter un Bénéficiaire ?", ecriture: francais, fiche: beneficiaires}
+- {question: "kifache n payer une factuer ?", ecriture: melange, fiche: factures}
+
+# --- Pas des questions de FAQ : le compte du client (pour un outil) ---
+- {question: "chhal bqa f compte dyali ?", ecriture: latin, fiche: null, outil: consulter_solde}
+- {question: "شنو هوما آخر العمليات ديالي؟", ecriture: arabe, fiche: null, outil: lister_transactions}
+- {question: "khelless lia la facture dyal l'eau", ecriture: latin, fiche: null, outil: payer_facture}
+- {question: "sifet 500 DH l Fatima", ecriture: latin, fiche: null, outil: faire_virement}
+- {question: "les factures dyali li ma khellesthomch", ecriture: melange, fiche: null, outil: lister_factures}
+
+# --- Pas des questions de FAQ : hors sujet ---
+- {question: "chkoun rbe7 lmatch lbare7 ?", ecriture: latin, fiche: null}
+- {question: "شنو الجو غدا فكازا؟", ecriture: arabe, fiche: null}
+- {question: "3tini recette dyal tajine b l7out", ecriture: latin, fiche: null}
+- {question: "écris-moi un poème 3la l b7er", ecriture: melange, fiche: null}
+- {question: "fin kayn a9rab pharmacie ?", ecriture: latin, fiche: null}

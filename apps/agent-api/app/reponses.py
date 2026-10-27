@@ -8,12 +8,24 @@ MAROC = ZoneInfo("Africa/Casablanca")
 
 SALUT = "Wa 3alikom salam ! Ana Wakil, l'assistant dyal Banque Atlas Démo. Kifach n9der n3awnek ?"
 POLITESSE = "Bla jmil ! Ila bghiti chi haja okhra, ana hna."
-# Neutre : convient au hors-sujet, à ce qui n'est pas encore possible (virement, paiement) et à l'incompris.
+# Neutre : convient au hors-sujet et à l'incompris. La liste dit tout ce que Wakil sait faire.
 REFUS = (
-    "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations w les factures dyalek."
+    "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations, les factures, "
+    "l'virement, w les questions 3la la banque."
 )
 ERREUR = "Smeh lia, kayn mochkil f la banque daba. 3awed men ba3d."
 PANNE = "Smeh lia, Wakil ma khdamch daba. 3awed men ba3d."  # panne de l'agent lui-même (LLM injoignable…)
+
+# FAQ : le texte de la fiche est cité tel quel (voir faq.py) ; seule l'introduction est en darija.
+FAQ_INTROUVABLE = (
+    "Smeh lia, ma l9itch jawab 3la had so2al f la FAQ. "
+    "N9der n3awnek f : solde, l'opérations, les factures w l'virement."
+)
+FAQ_INDISPONIBLE = "Smeh lia, la FAQ ma khdamach daba. 3awed men ba3d."
+
+
+def faq(titre: str, texte: str) -> str:
+    return f"Hadchi li kayn f la FAQ, « {titre} » :\n{texte}"
 
 
 def dh(montant: str | Decimal) -> str:

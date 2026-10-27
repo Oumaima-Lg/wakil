@@ -58,8 +58,8 @@ export type MessageWakil = {
 };
 export type MessageChat = MessageClient | MessageWakil;
 
-/** Où en est Wakil : il lit la demande (le LLM), puis interroge la banque. null : il attend un message. */
-export type Avancement = "lecture" | "banque" | null;
+/** Où en est Wakil : il lit la demande (le LLM), puis interroge la banque ou la FAQ. null : il attend un message. */
+export type Avancement = "lecture" | "banque" | "faq" | null;
 
 /** Ce qui part vers /chat : le texte, et éventuellement le bouton cliqué (voir Message dans agent-api/app/main.py). */
 type Demande = { texte: string; facture_id?: number; carte?: string };
@@ -139,7 +139,8 @@ export function useConversation() {
         for await (const evenement of lireEvenements(reponse.body)) {
           const { nom, donnees } = evenement as Evenement;
           if (nom === "etape" && donnees.noeud === "comprendre" && donnees.outil) {
-            setAvancement("banque"); // le LLM a choisi un outil : le code interroge la banque
+            // le LLM a choisi un outil : le code interroge la banque, ou cherche dans la FAQ
+            setAvancement(donnees.outil === "question_faq" ? "faq" : "banque");
           } else if (nom === "confirmation") {
             // Une nouvelle carte remplace celle qui attendait encore (le serveur l'a abandonnée)
             changerCartes((c) => EN_COURS.includes(c.statut), "remplacee");

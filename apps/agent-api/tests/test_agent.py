@@ -8,12 +8,12 @@ from app import agent, outils, reponses
 
 
 def fausse_banque(resultat, clients_appeles=None):
-    def appeler(client_id):
+    def lecture(client_id):
         if clients_appeles is not None:
             clients_appeles.append(client_id)
         return resultat
 
-    return appeler
+    return lecture
 
 
 def banque_en_panne(client_id):
@@ -87,6 +87,18 @@ def test_le_llm_voit_les_messages_precedents(faux_llm, tour, monkeypatch):
 
     vus_au_deuxieme_message = [m.content for m in faux.recus[1][1:]]  # [1:] : sans la consigne système
     assert vus_au_deuxieme_message == ["chno homa les transactions dyali", premier["reponse"], "c'est tout ?"]
+
+
+def test_le_llm_ne_voit_pas_les_refus_precedents(faux_llm, tour):
+    """Un petit modèle qui voit ses refus a tendance à refuser encore : ils restent dans le chat, pas dans son prompt."""
+    faux = faux_llm()  # aucun outil : Wakil refuse
+
+    premier = tour("je suis salma")
+    tour("comment ajouter un bénéficiaire ?")
+
+    assert premier["reponse"] == reponses.REFUS
+    vus_au_deuxieme_message = [m.content for m in faux.recus[1][1:]]
+    assert vus_au_deuxieme_message == ["je suis salma", "comment ajouter un bénéficiaire ?"]
 
 
 def test_l_erreur_d_un_message_ne_deborde_pas_sur_le_suivant(faux_llm, tour, monkeypatch):

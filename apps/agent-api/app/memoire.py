@@ -1,4 +1,4 @@
-"""Où Wakil range ses conversations : dans PostgreSQL, base séparée de l'agent (voir base-agent.sh).
+"""La base séparée de l'agent (voir base-agent.sh) : ses conversations, et les vecteurs de la FAQ (voir faq.py).
 
 Avec InMemorySaver, tout vivait en mémoire vive : un redémarrage d'agent-api effaçait les conversations, et
 surtout les paiements qui attendaient « Wach nconfirmi ? ». Avec PostgresSaver, l'état est écrit après chaque
@@ -20,8 +20,8 @@ def base_configuree() -> bool:
 
 
 @contextmanager
-def memoire_postgres() -> Iterator[PostgresSaver]:
-    """Ouvre un pool de connexions vers la base de l'agent et crée les tables du checkpointer si besoin."""
+def pool_agent() -> Iterator[ConnectionPool]:
+    """Un pool de connexions vers la base de l'agent, partagé par la mémoire des conversations et la FAQ."""
     conninfo = make_conninfo(
         host=os.environ.get("POSTGRES_HOST", "localhost"),
         port=os.environ.get("POSTGRES_PORT", "5432"),
@@ -36,6 +36,11 @@ def memoire_postgres() -> Iterator[PostgresSaver]:
         kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
         check=ConnectionPool.check_connection,  # comme bank-api : survit à un redémarrage de PostgreSQL
     ) as pool:
-        memoire = PostgresSaver(pool)
-        memoire.setup()  # crée ses tables la première fois (comme une migration)
-        yield memoire
+        yield pool
+
+
+def memoire_postgres(pool: ConnectionPool) -> PostgresSaver:
+    """Le « checkpointer » de LangGraph, qui crée ses tables la première fois (comme une migration)."""
+    memoire = PostgresSaver(pool)
+    memoire.setup()
+    return memoire

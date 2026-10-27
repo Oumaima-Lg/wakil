@@ -1,0 +1,183 @@
+# FAQ de la Banque Atlas Démo. Données 100 % fictives – projet de démonstration.
+#
+# Chaque fiche dit exactement ce que fait la banque fictive (bank-api) : si une règle change, la fiche change aussi.
+# Wakil cite le « texte » tel quel ; les « questions » (darija en lettres arabes, latines, ou mêlée de français) ne
+# sont jamais montrées : elles aident seulement à retrouver la fiche (voir apps/agent-api/app/faq.py).
+# Après une modification : uv run --env-file ../../.env python -m app.faq (depuis apps/agent-api).
+
+- id: wakil
+  titre: Ce que Wakil sait faire
+  texte: >-
+    Wakil répond sur votre compte de la Banque Atlas Démo : il donne le solde, montre les dernières opérations et les
+    factures à payer, paie une facture et fait un virement vers un bénéficiaire déjà enregistré, toujours après votre
+    confirmation. Il répond aussi aux questions de cette FAQ. Il ne peut ni ouvrir un compte, ni ajouter un
+    bénéficiaire, ni bloquer une carte.
+  questions:
+    - chno t9der dir lia ?
+    - شنو كتقدر دير ليا؟
+    - Wakil chno kay3ref ydir ?
+    - wach t9der t3awenni f l compte dyali ?
+    - c'est quoi les services li kat9dem ?
+    - a chno howa dour dyalek ?
+    - شنو هوما الخدمات ديالك؟
+    - à quoi tu sers exactement ?
+    - ach kat9der dir f had l'application ?
+
+- id: frais
+  titre: Frais et tarifs
+  texte: >-
+    La Banque Atlas Démo ne prélève aucun frais : ni frais de tenue de compte, ni frais de virement (vers un client
+    de la banque ou vers une autre banque), ni frais de paiement de facture. Seul le montant de l'opération est
+    débité de votre compte. Comme toute la banque, ces tarifs sont fictifs.
+  questions:
+    - wach kayn chi frais 3la l compte ?
+    - ch7al kayt5lles l virement ?
+    - شحال كتاخدو على الفيرمون؟
+    - واش كاينين شي مصاريف كل شهر؟
+    - les frais de tenue de compte ch7al ?
+    - wach kat9et3o chi 7aja ila khellest facture ?
+
+- id: plafond
+  titre: Plafond de virement
+  texte: >-
+    Chaque virement est limité par le plafond de votre compte, affiché dans la vue d'ensemble et dans la page
+    Bénéficiaires. Le plafond s'applique à chaque virement, pas à la journée. Au-delà, la banque refuse le virement
+    et Wakil vous le dit avant de demander votre confirmation. Dans la démo, le plafond ne peut pas être modifié.
+  questions:
+    - chhal max n9der nsifet ?
+    - شحال أقصى مبلغ نقدر نصيفط؟
+    - wach kayn plafond f les virements ?
+    - bghit nzid f l plafond dyali
+    - c'est combien le maximum dyal virement ?
+
+- id: delai-virement
+  titre: Délai d'un virement
+  texte: >-
+    Dans la démo, un virement est immédiat : le montant quitte votre compte dès votre confirmation et apparaît aussitôt
+    dans vos opérations. Si le bénéficiaire est client de la Banque Atlas Démo, il le reçoit au même moment.
+  questions:
+    - ch7al dyal lw9t bach ywsel l virement ?
+    - شحال كياخد الفيرمون باش يوصل؟
+    - wach l virement kaydouz direct ?
+    - imta ghadi ywsel lflous l khti ?
+    - le virement kaywsel f nhar ?
+
+- id: beneficiaires
+  titre: Bénéficiaires
+  texte: >-
+    Wakil ne vire de l'argent qu'aux bénéficiaires déjà enregistrés, visibles dans la page Bénéficiaires. Dans la
+    démo, cette liste est fixée à l'avance : on ne peut ni ajouter ni supprimer un bénéficiaire. Wakil ne fait jamais
+    de virement vers un RIB écrit dans le chat.
+  questions:
+    - kifach nzid bénéficiaire jdid ?
+    - كيفاش نزيد شي واحد جديد باش نصيفط ليه؟
+    - bghit nsifet l wa7ed makaynch f la liste
+    - wach n9der n3tik RIB w tsifet lih ?
+    - ajouter un bénéficiaire kifach ?
+    - kifach nzid chi wa7ed f les bénéficiaires ?
+    - زيد ليا مستفيد جديد
+    - comment enregistrer un nouveau destinataire de virement ?
+    - bghit nzid RIB jdid f la liste
+
+- id: factures
+  titre: Payer une facture
+  texte: >-
+    Wakil paie les factures impayées de trois fournisseurs fictifs : Eau & Électricité (démo), Internet (démo) et
+    Mobile (démo). Demandez-le dans le chat, ou cliquez sur « Payer avec Wakil » dans la page Factures. Wakil affiche
+    le montant et attend votre confirmation ; si votre solde ne suffit pas, la banque refuse le paiement.
+  questions:
+    - kifach nkhelles la facture dyal l ma ?
+    - شنو هوما الفواتير اللي تقدر تخلص؟
+    - n9der nkhelles l'internet b Wakil ?
+    - chno homa les fournisseurs li t9der tkhelles ?
+    - kifach nkhelles les factures men hna ?
+
+- id: confirmation
+  titre: Pourquoi Wakil demande « Wach nconfirmi ? »
+  texte: >-
+    Avant chaque paiement ou virement, Wakil fait vérifier l'opération par la banque sans rien exécuter, puis affiche
+    une carte « Wach nconfirmi ? » avec le montant et le bénéficiaire. Rien ne bouge tant que vous n'avez pas répondu
+    « Oui ». « Non », ou une réponse qui n'est ni oui ni non, annule l'opération.
+  questions:
+    - 3lach kat9oli wach nconfirmi ?
+    - علاش كتسولني واش نأكد؟
+    - wach lflous kaykhrjo 9bel ma ngoul oui ?
+    - ila glt la chno kayw9e3 ?
+    - kifach nannuli l'opération 9bel ma tdouz ?
+
+- id: carte-perdue
+  titre: Carte perdue ou volée
+  texte: >-
+    La carte de la Banque Atlas Démo est fictive : il n'y a rien à bloquer. Avec une vraie carte, faites opposition
+    sans attendre auprès de votre banque, par ses canaux officiels. Wakil ne peut pas bloquer une carte.
+  questions:
+    - ضاعت ليا الكارطة، شنو ندير؟
+    - tsre9at lia la carte, kifach nbloquiha ?
+    - bghit ndir opposition 3la la carte
+    - la carte dyali tlfat lia
+    - كيفاش نبلوكي الكارطة؟
+
+- id: securite
+  titre: Codes et mots de passe
+  texte: >-
+    Wakil ne vous demandera jamais de mot de passe, de code de carte, de code reçu par SMS ni de numéro de carte
+    complet. Ne les écrivez jamais dans le chat. Si quelqu'un vous les demande au nom de la banque, c'est une tentative
+    de fraude.
+  questions:
+    - wach khassni n3tik l code dyal la carte ?
+    - واش نعطيك الكود السري ديالي؟
+    - wa7ed sift lia message kaytlb l code, wach nta ?
+    - wach Wakil kaytlb mot de passe ?
+    - chi wa7ed 3iyet lia w 9al lia ana men la banque
+
+- id: contester
+  titre: Une opération que je ne reconnais pas
+  texte: >-
+    Vérifiez d'abord la liste complète dans la page Opérations. Dans la démo, les opérations sont fictives et ne
+    peuvent pas être contestées. Avec un vrai compte, signalez sans attendre une opération inconnue à votre banque.
+    Wakil n'annule pas une opération déjà faite.
+  questions:
+    - kayna chi opération ma3reftha
+    - شي حد خلص بالكارطة ديالي وأنا ما درتش
+    - had l'opération machi ana li drtha
+    - bghit nannuli virement li drt lbare7
+    - kifach nconteste chi prélèvement ?
+
+- id: decouvert
+  titre: Solde insuffisant et découvert
+  texte: >-
+    La Banque Atlas Démo n'autorise pas de découvert : le solde ne descend jamais sous 0 DH. Si un paiement ou un
+    virement dépasse votre solde, la banque le refuse, et Wakil vous dit combien il manque avant même de demander
+    votre confirmation.
+  questions:
+    - wach n9der nkhelles ila solde ma kafich ?
+    - واش كاين الديكوفير؟
+    - ila ma kanch 3endi flous kafyin chno kayw9e3 ?
+    - n9der ndouz l solde f negatif ?
+    - wach t9der tsle7 lia chi flous ?
+
+- id: donnees
+  titre: Données fictives et vie privée
+  texte: >-
+    La Banque Atlas Démo est un projet de démonstration : la banque, les clients, les comptes, les factures et les
+    montants sont 100 % fictifs. Aucune donnée réelle n'est demandée, et le modèle d'IA tourne en local par défaut.
+    N'écrivez jamais vos vraies informations bancaires dans le chat.
+  questions:
+    - wach had la banque bss7 ?
+    - واش هاد البنك حقيقي؟
+    - fin kaymchiw les messages dyali ?
+    - wach les données dyali m7miyin ?
+    - wach kat7tafdo b les informations dyali ?
+
+- id: horaires
+  titre: Horaires et agences
+  texte: >-
+    Wakil répond à toute heure, 7 jours sur 7. La Banque Atlas Démo n'a pas d'agence : elle n'existe que dans cette
+    démonstration. Après quelques minutes sans message, la première réponse peut prendre jusqu'à 30 secondes, le temps
+    que le modèle se recharge.
+  questions:
+    - imta kat7el la banque ?
+    - wach khdamin nhar l7ed ?
+    - فين كاينة الوكالة ديالكم؟
+    - wach Wakil khdam f lil ?
+    - l'agence la plus proche fin ?
