@@ -1,55 +1,82 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="760" viewBox="0 0 1000 760" role="img" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif">
-  <title>Architecture de Wakil</title>
-  <desc>Le navigateur parle à web (Next.js). web envoie /api/… à portail-api (pages et bac à sable, sans IA) et /api/chat à agent-api (Wakil). agent-api passe par MCP à mcp-tools, seule porte de l'IA vers la banque. portail-api et mcp-tools appellent bank-api en HTTP.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif">
+  <title>Architecture de Wakil : six services, le LLM qui décide, le RAG de la FAQ à part</title>
+  <desc>Le navigateur parle à web (Next.js). web envoie /api/… à portail-api (pages, sans IA) et /api/chat à agent-api (LangGraph). agent-api demande au LLM qwen3:4b-instruct quel outil utiliser, puis appelle en MCP soit mcp-tools (les outils de la banque, qui appelle bank-api), soit rag-faq (le RAG de la FAQ, avec bge-m3 et pgvector dans sa base wakil_faq). agent-api range ses conversations dans sa base wakil_agent.</desc>
   <defs>
     <marker id="fleche" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
   </defs>
-  <rect width="1000" height="760" fill="#FFFFFF"/>
+  <rect width="1200" height="820" fill="#FFFFFF"/>
 
-  <rect x="190" y="40" width="240" height="84" rx="10" fill="#F1EFE8" stroke="#5F5E5A"/>
-  <text x="310" y="72" text-anchor="middle" font-size="20" font-weight="600" fill="#444441">Navigateur</text>
-  <text x="310" y="102" text-anchor="middle" font-size="16" fill="#5F5E5A">Visiteur ou client</text>
+  <rect x="120" y="40" width="240" height="84" rx="10" fill="#F1EFE8" stroke="#5F5E5A"/>
+  <text x="240" y="72" text-anchor="middle" font-size="20" font-weight="600" fill="#444441">Navigateur</text>
+  <text x="240" y="102" text-anchor="middle" font-size="16" fill="#5F5E5A">Visiteur ou client</text>
 
-  <rect x="570" y="40" width="240" height="84" rx="10" fill="#F1EFE8" stroke="#5F5E5A"/>
-  <text x="690" y="72" text-anchor="middle" font-size="20" font-weight="600" fill="#444441">web (Next.js)</text>
-  <text x="690" y="102" text-anchor="middle" font-size="16" fill="#5F5E5A">Interface seulement</text>
+  <rect x="470" y="40" width="240" height="84" rx="10" fill="#F1EFE8" stroke="#5F5E5A"/>
+  <text x="590" y="72" text-anchor="middle" font-size="20" font-weight="600" fill="#444441">web (Next.js)</text>
+  <text x="590" y="102" text-anchor="middle" font-size="16" fill="#5F5E5A">Interface seulement</text>
 
-  <rect x="100" y="220" width="370" height="104" rx="10" fill="#E1F5EE" stroke="#0F6E56"/>
-  <text x="285" y="262" text-anchor="middle" font-size="20" font-weight="600" fill="#085041">portail-api</text>
-  <text x="285" y="296" text-anchor="middle" font-size="16" fill="#0F6E56">Session, espace, bac à sable</text>
+  <rect x="840" y="40" width="290" height="84" rx="10" fill="#F1EFE8" stroke="#5F5E5A"/>
+  <text x="985" y="72" text-anchor="middle" font-size="20" font-weight="600" fill="#444441">Base wakil_agent</text>
+  <text x="985" y="102" text-anchor="middle" font-size="16" fill="#5F5E5A">mémoire des conversations</text>
 
-  <rect x="505" y="220" width="370" height="104" rx="10" fill="#EEEDFE" stroke="#534AB7"/>
-  <text x="690" y="262" text-anchor="middle" font-size="20" font-weight="600" fill="#3C3489">agent-api (Wakil)</text>
-  <text x="690" y="296" text-anchor="middle" font-size="16" fill="#534AB7">Comprend, confirme, répond</text>
+  <rect x="60" y="220" width="330" height="104" rx="10" fill="#E1F5EE" stroke="#0F6E56"/>
+  <text x="225" y="262" text-anchor="middle" font-size="20" font-weight="600" fill="#085041">portail-api</text>
+  <text x="225" y="296" text-anchor="middle" font-size="16" fill="#0F6E56">Session, espace, bac à sable</text>
 
-  <rect x="505" y="410" width="370" height="84" rx="10" fill="#EEEDFE" stroke="#534AB7"/>
-  <text x="690" y="442" text-anchor="middle" font-size="20" font-weight="600" fill="#3C3489">mcp-tools (serveur MCP)</text>
-  <text x="690" y="472" text-anchor="middle" font-size="16" fill="#534AB7">Seule porte IA vers la banque</text>
+  <rect x="430" y="220" width="330" height="104" rx="10" fill="#EEEDFE" stroke="#534AB7"/>
+  <text x="595" y="262" text-anchor="middle" font-size="20" font-weight="600" fill="#3C3489">agent-api (LangGraph)</text>
+  <text x="595" y="296" text-anchor="middle" font-size="16" fill="#534AB7">Aiguille, confirme, répond</text>
 
-  <rect x="100" y="590" width="775" height="84" rx="10" fill="#F1EFE8" stroke="#5F5E5A"/>
-  <text x="487.5" y="622" text-anchor="middle" font-size="20" font-weight="600" fill="#444441">bank-api</text>
-  <text x="487.5" y="652" text-anchor="middle" font-size="16" fill="#5F5E5A">Données et toutes les règles métier</text>
+  <rect x="800" y="220" width="330" height="104" rx="10" fill="#FAEEDA" stroke="#854F0B"/>
+  <text x="965" y="262" text-anchor="middle" font-size="20" font-weight="600" fill="#633806">LLM · qwen3:4b-instruct</text>
+  <text x="965" y="296" text-anchor="middle" font-size="16" fill="#854F0B">Ollama en local · choisit l'outil</text>
+
+  <rect x="430" y="410" width="330" height="104" rx="10" fill="#EEEDFE" stroke="#534AB7"/>
+  <text x="595" y="452" text-anchor="middle" font-size="20" font-weight="600" fill="#3C3489">mcp-tools (serveur MCP)</text>
+  <text x="595" y="486" text-anchor="middle" font-size="16" fill="#534AB7">Seule porte IA vers la banque</text>
+
+  <rect x="800" y="410" width="330" height="104" rx="10" fill="#FAECE7" stroke="#993C1D"/>
+  <text x="965" y="452" text-anchor="middle" font-size="20" font-weight="600" fill="#712B13">rag-faq (serveur MCP)</text>
+  <text x="965" y="486" text-anchor="middle" font-size="16" fill="#993C1D">RAG de la FAQ · bge-m3</text>
+
+  <rect x="60" y="600" width="700" height="104" rx="10" fill="#F1EFE8" stroke="#5F5E5A"/>
+  <text x="410" y="642" text-anchor="middle" font-size="20" font-weight="600" fill="#444441">bank-api</text>
+  <text x="410" y="676" text-anchor="middle" font-size="16" fill="#5F5E5A">Données et toutes les règles métier</text>
+
+  <rect x="800" y="600" width="330" height="104" rx="10" fill="#FAECE7" stroke="#993C1D"/>
+  <text x="965" y="634" text-anchor="middle" font-size="20" font-weight="600" fill="#712B13">Base wakil_faq · pgvector</text>
+  <text x="965" y="664" text-anchor="middle" font-size="16" fill="#993C1D">13 fiches + questions types</text>
+  <text x="965" y="688" text-anchor="middle" font-size="16" fill="#993C1D">indexées depuis faq.yaml</text>
 
   <g fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#fleche)">
-    <line x1="430" y1="82" x2="565" y2="82"/>
-    <path d="M630 124 V160 H285 V214"/>
-    <line x1="690" y1="124" x2="690" y2="214"/>
-    <line x1="690" y1="324" x2="690" y2="404"/>
-    <line x1="285" y1="324" x2="285" y2="584"/>
-    <line x1="690" y1="494" x2="690" y2="584"/>
+    <line x1="360" y1="82" x2="465" y2="82"/>
+    <path d="M560 124 V170 H225 V214"/>
+    <line x1="620" y1="124" x2="620" y2="214"/>
+    <path d="M720 220 V180 H985 V129"/>
+    <line x1="595" y1="324" x2="595" y2="404"/>
+    <path d="M720 324 V370 H965 V404"/>
+    <line x1="225" y1="324" x2="225" y2="594"/>
+    <line x1="595" y1="514" x2="595" y2="594"/>
+    <line x1="965" y1="514" x2="965" y2="594"/>
   </g>
+  <line x1="764" y1="272" x2="796" y2="272" stroke="#888780" stroke-width="1.5" marker-start="url(#fleche)" marker-end="url(#fleche)"/>
   <g font-size="16" fill="#444441">
-    <text x="297" y="196">/api/… pages</text>
-    <text x="702" y="196">/api/chat</text>
-    <text x="702" y="372">MCP</text>
-    <text x="297" y="550">HTTP, lecture et écriture</text>
-    <text x="702" y="550">HTTP</text>
+    <text x="237" y="196">/api/… pages</text>
+    <text x="632" y="196">/api/chat</text>
+    <text x="607" y="372">MCP</text>
+    <text x="840" y="362">MCP</text>
+    <text x="237" y="560">HTTP, lecture et écriture</text>
+    <text x="607" y="560">HTTP</text>
+    <text x="977" y="560">SQL</text>
   </g>
 
-  <rect x="100" y="706" width="20" height="20" rx="4" fill="#E1F5EE" stroke="#0F6E56"/>
-  <text x="132" y="722" font-size="16" fill="#444441">Pages et bac à sable, sans IA</text>
-  <rect x="505" y="706" width="20" height="20" rx="4" fill="#EEEDFE" stroke="#534AB7"/>
-  <text x="537" y="722" font-size="16" fill="#444441">Chemin de l'IA</text>
+  <rect x="60" y="756" width="20" height="20" rx="4" fill="#E1F5EE" stroke="#0F6E56"/>
+  <text x="92" y="772" font-size="16" fill="#444441">Pages et bac à sable, sans IA</text>
+  <rect x="370" y="756" width="20" height="20" rx="4" fill="#EEEDFE" stroke="#534AB7"/>
+  <text x="402" y="772" font-size="16" fill="#444441">Chemin de l'IA</text>
+  <rect x="580" y="756" width="20" height="20" rx="4" fill="#FAEEDA" stroke="#854F0B"/>
+  <text x="612" y="772" font-size="16" fill="#444441">LLM : décide</text>
+  <rect x="780" y="756" width="20" height="20" rx="4" fill="#FAECE7" stroke="#993C1D"/>
+  <text x="812" y="772" font-size="16" fill="#444441">RAG de la FAQ : cherche</text>
 </svg>

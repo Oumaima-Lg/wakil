@@ -1,6 +1,6 @@
-# ADR 0001 — Cinq services, découpés aux frontières de sécurité
+# ADR 0001 — Des services découpés aux frontières de sécurité
 
-- **Statut** : acceptée
+- **Statut** : acceptée (complétée le 29/10/2026 : le RAG de la FAQ devient un sixième service, `rag-faq`, voir l'ADR 0002)
 - **Date** : 26/10/2026
 
 ## Contexte
@@ -24,8 +24,9 @@ Ce qui guide la découpe :
 |---|---|---|
 | `web` (Next.js) | L'interface. Aiguille `/api/chat` vers `agent-api`, le reste de `/api/…` vers `portail-api` | Aucune règle métier, aucun appel à `bank-api` |
 | `portail-api` | La session et les pages de l'espace ; plus tard, le bac à sable | Aucune IA (ni LLM, ni agent, ni MCP) |
-| `agent-api` | Wakil : comprend, demande la confirmation, répond | Ne crée aucune session ; n'appelle jamais `bank-api` directement |
+| `agent-api` (LangGraph) | Wakil : le LLM choisit l'outil, le graphe aiguille vers la banque ou la FAQ, demande la confirmation, répond | Ne crée aucune session ; n'appelle jamais `bank-api` directement ; n'a aucun accès à l'index de la FAQ |
 | `mcp-tools` | La seule porte de l'IA vers la banque | Ne prend jamais le client dans les arguments du LLM |
+| `rag-faq` | Le RAG de la FAQ, en serveur MCP : retrouve la fiche qui répond, dans sa propre base | Ne rédige rien, ne parle pas à la banque, ne reçoit pas l'identité du client |
 | `bank-api` | Les données et toutes les règles métier | Ne connaît ni l'IA, ni le navigateur |
 
 **Sessions en RS256.** `portail-api` signe le jeton avec la clé privée. `agent-api` le vérifie avec la clé publique et ne peut donc pas en fabriquer. Le jeton nomme son émetteur (`iss: portail-api`) et ses destinataires (`aud: [portail-api, agent-api]`). Chaque service refuse un jeton qui ne le nomme pas.
@@ -40,7 +41,7 @@ Ce qui guide la découpe :
 
 - Un seul chemin de l'IA vers la banque : `agent-api` → `mcp-tools` → `bank-api`. Le rapport de sécurité (S5) n'a qu'une porte à attaquer et à mesurer.
 - Si `agent-api` était compromis, l'attaquant ne pourrait ni créer de session pour un autre client, ni appeler la banque sans passer par les outils et leur confirmation.
-- Un service de plus à lancer en local : un `Procfile` et la commande `uvx honcho start` lancent les cinq. En S6, ce sera aussi une Container App de plus, en `minReplicas=0`, donc sans coût quand elle ne sert pas.
+- Un service de plus à lancer en local : un `Procfile` et la commande `uvx honcho start` lancent les six. En S6, ce sera aussi une Container App de plus, en `minReplicas=0`, donc sans coût quand elle ne sert pas.
 - La vérification du jeton est écrite deux fois (une vingtaine de lignes dans `portail-api` et `agent-api`). C'est accepté plutôt que de créer une bibliothèque partagée.
 - **Limites connues** :
   - En local, les deux clés sont dans le même `.env`. La vraie séparation viendra en S6 : chaque Container App ne recevra de Key Vault que la clé dont elle a besoin.

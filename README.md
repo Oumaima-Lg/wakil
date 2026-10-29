@@ -21,44 +21,52 @@ Wakil  : Tkhelssat ✅
 flowchart LR
     nav(["Navigateur"]) --> web["<b>web</b><br/>Next.js · interface seulement"]
     web -- "/api/… (session, pages)" --> portail["<b>portail-api</b><br/>session · espace · bac à sable"]
-    web -- "/api/chat" --> agent["<b>agent-api</b><br/>Wakil : comprend, confirme, répond"]
+    web -- "/api/chat" --> agent["<b>agent-api (LangGraph)</b><br/>aiguille, confirme, répond"]
+    agent <--> llm["<b>LLM</b> · qwen3:4b-instruct<br/>Ollama · choisit l'outil"]
     agent -- MCP --> outils["<b>mcp-tools</b><br/>seule porte de l'IA vers la banque"]
+    agent -- MCP --> faq["<b>rag-faq</b><br/>RAG de la FAQ · bge-m3 + pgvector"]
     portail -- HTTP --> banque["<b>bank-api</b><br/>données et toutes les règles métier"]
     outils -- HTTP --> banque
 
     classDef sansIA fill:#e3f4e1,stroke:#3d8b37,color:#1d3b1a
     classDef ia fill:#eee5fa,stroke:#7a4fc2,color:#2e1a52
+    classDef modele fill:#faeeda,stroke:#854f0b,color:#633806
+    classDef rag fill:#faece7,stroke:#993c1d,color:#712b13
     class portail sansIA
     class agent,outils ia
+    class llm modele
+    class faq rag
 ```
 
-En vert, les pages et le bac à sable, sans IA. En violet, le chemin de l'IA.
+En vert, les pages et le bac à sable, sans IA. En violet, le chemin de l'IA. En jaune, le LLM, qui **décide** quel outil appeler. En orange, le RAG de la FAQ, qui **cherche**.
 
 | Service | Port | Son rôle | Ce qu'il ne fait jamais |
 |---|---|---|---|
 | `web` (Next.js) | 3000 | Les pages et le chat. Envoie `/api/chat` à agent-api et le reste de `/api/…` à portail-api | Aucune règle métier, aucun appel à bank-api |
 | `portail-api` (FastAPI) | 8003 | Ouvre la session (jeton signé avec la clé privée, dans un cookie HttpOnly) et sert les pages de l'espace bancaire ; plus tard, le bac à sable des visiteurs | Aucune IA : ni LLM, ni agent, ni outil MCP |
-| `agent-api` (FastAPI, LangGraph) | 8001 | Wakil : le LLM comprend la demande et choisit l'outil ; le code demande « Wach nconfirmi ? » avant toute opération et écrit la réponse ; il cite la FAQ (recherche par embeddings, pgvector) | Ne crée aucune session (il n'a que la clé publique), n'appelle jamais bank-api directement |
+| `agent-api` (FastAPI, LangGraph) | 8001 | Wakil : le LLM comprend la demande et choisit l'outil ; LangGraph aiguille vers les outils de la banque ou la FAQ, demande « Wach nconfirmi ? » avant toute opération, et le code écrit la réponse | Ne crée aucune session (il n'a que la clé publique), n'appelle jamais bank-api directement, n'a aucun accès à l'index de la FAQ |
 | `mcp-tools` (serveur MCP) | 8002 | Les outils de la banque pour l'IA : retrouve la facture ou le bénéficiaire ; sans la confirmation du client, fait seulement une vérification à blanc | Ne prend jamais le client dans les arguments du LLM (il vient de l'en-tête de la requête) |
+| `rag-faq` (serveur MCP) | 8004 | Le RAG de la FAQ : l'outil `question_faq` retrouve la fiche la plus proche (bge-m3 + pgvector, dans sa propre base) ; l'indexation de `faq.yaml` | Ne rédige rien, ne parle ni à la banque ni au LLM de l'agent, ne reçoit pas l'identité du client |
 | `bank-api` (FastAPI, PostgreSQL) | 8000 | Les données fictives et toutes les règles : solde suffisant, plafond, facture déjà payée, compte du bon client ; journal d'audit | Ne connaît ni l'IA, ni le navigateur |
 
 Trois règles tiennent cette découpe :
 
-- **Un seul chemin de l'IA vers la banque** : agent-api → mcp-tools → bank-api. Des contrats [import-linter](https://import-linter.readthedocs.io/) (l'équivalent Python d'ArchUnit) le vérifient à chaque `uv run lint-imports` :
+- **L'IA n'atteint la banque et la FAQ que par MCP** : agent-api → mcp-tools → bank-api, et agent-api → rag-faq. Chaque outil n'est accepté que de son serveur. Des contrats [import-linter](https://import-linter.readthedocs.io/) (l'équivalent Python d'ArchUnit) le vérifient à chaque `uv run lint-imports` :
   - agent-api ne peut importer aucun client HTTP ;
-  - portail-api ne peut importer aucune brique d'IA.
+  - portail-api ne peut importer aucune brique d'IA ;
+  - rag-faq ne peut importer ni LangGraph ni client HTTP.
 - **La session est créée à un seul endroit** : portail-api signe le jeton (RS256) avec sa clé privée. agent-api le vérifie avec la clé publique, sans pouvoir en fabriquer.
 - **Les règles métier ne sont jamais confiées au LLM** : c'est bank-api qui accepte ou refuse une opération.
 
-Les conversations de l'agent et les vecteurs de la FAQ sont dans une base PostgreSQL séparée (`wakil_agent`). Elle a son propre utilisateur, sans aucun droit sur la base de la banque. Le LLM et le modèle d'embeddings tournent en local avec Ollama. Le pourquoi de cette découpe est expliqué dans [docs/adr/0001-roles-des-services.md](docs/adr/0001-roles-des-services.md).
+Chaque service a sa propre base PostgreSQL et son propre utilisateur, sans droit sur les autres : la banque (`banque_atlas_demo`), les conversations de l'agent (`wakil_agent`) et les vecteurs de la FAQ (`wakil_faq`). Un agent piégé ne peut donc pas modifier la FAQ. Le LLM et le modèle d'embeddings tournent en local avec Ollama. Le pourquoi de cette découpe est expliqué dans [docs/adr/0001-roles-des-services.md](docs/adr/0001-roles-des-services.md).
 
-Deux schémas pour comprendre : [les 5 services](docs/schemas/architecture.png) et [le trajet d'un paiement entre l'agent, le serveur MCP et la banque](docs/schemas/agent-mcp-sequence.png).
+Deux schémas pour comprendre : [les 6 services, le LLM qui décide et le RAG de la FAQ](docs/schemas/architecture.png), et [le trajet d'une question de FAQ puis d'un paiement, entre le LLM, l'agent, la FAQ, le serveur MCP et la banque](docs/schemas/agent-mcp-sequence.png).
 
 ### La FAQ, citée sans rien inventer
 
-Pour une question générale (frais, plafond, carte perdue, sécurité…), Wakil retrouve la fiche de la [FAQ](data/faq/faq.yaml) la plus proche et **cite son texte tel quel**, avec sa source. Le LLM ne rédige rien : il reconnaît seulement que c'est une question de FAQ. Le choix est expliqué dans [docs/adr/0002-faq-reponses-citees.md](docs/adr/0002-faq-reponses-citees.md).
+Pour une question générale (frais, plafond, carte perdue, sécurité…), Wakil retrouve la fiche de la [FAQ](data/faq/faq.yaml) la plus proche et **cite son texte tel quel**, avec sa source. Le LLM ne rédige rien : il reconnaît seulement que c'est une question de FAQ, et agent-api appelle l'outil `question_faq` du serveur MCP `rag-faq` avec la phrase du client. Le choix est expliqué dans [docs/adr/0002-faq-reponses-citees.md](docs/adr/0002-faq-reponses-citees.md).
 
-1. **Indexation**, à chaque modification de la FAQ : le modèle d'embeddings `bge-m3` transforme le texte de chaque fiche, et chacune de ses questions types en darija, en un vecteur de 1024 nombres. Ces vecteurs sont rangés dans PostgreSQL avec pgvector.
+1. **Indexation**, à chaque modification de la FAQ : le modèle d'embeddings `bge-m3` transforme le texte de chaque fiche, et chacune de ses questions types en darija, en un vecteur de 1024 nombres. Ces vecteurs sont rangés avec pgvector dans la base de rag-faq.
 2. **À chaque question** : la phrase du client devient un vecteur, et pgvector trouve la fiche la plus proche (similarité cosinus). Sous le seuil de 0,60, Wakil répond qu'il n'a pas trouvé, au lieu de citer un texte qui ne répond pas.
 
 À venir :
@@ -98,17 +106,21 @@ ollama pull qwen3:4b-instruct
 ollama pull bge-m3
 docker compose up -d --wait
 uv run --env-file .env data/seed/generer_donnees.py
-(cd apps/agent-api && uv run --env-file ../../.env python -m app.faq)
+(cd apps/rag-faq && uv run --env-file ../../.env python -m app.faq)
 (cd apps/web && npm ci)
 ```
 
-Sur une base créée avant l'arrivée de la FAQ (27/10/2026), activer d'abord pgvector dans la base de l'agent, une seule fois :
+Sur un volume PostgreSQL créé avant le service rag-faq (29/10/2026), créer d'abord la base de la FAQ, une seule fois. `set -a` exporte les variables de `.env`, que `-e` transmet au conteneur sans les afficher :
 
 ```bash
-docker compose exec -T db bash -s < apps/agent-api/base-agent.sh
+set -a; . ./.env; set +a
 ```
 
-Puis lancer les cinq services d'une seule commande. [honcho](https://honcho.readthedocs.io/) lit le fichier `Procfile` (une ligne par service), affiche les journaux de chacun avec un préfixe de couleur, et Ctrl+C arrête tout :
+```bash
+docker compose exec -T -e FAQ_POSTGRES_USER -e FAQ_POSTGRES_PASSWORD -e FAQ_POSTGRES_DB db bash -s < apps/rag-faq/base-faq.sh
+```
+
+Puis lancer les six services d'une seule commande. [honcho](https://honcho.readthedocs.io/) lit le fichier `Procfile` (une ligne par service), affiche les journaux de chacun avec un préfixe de couleur, et Ctrl+C arrête tout :
 
 ```bash
 uvx honcho start
@@ -124,14 +136,15 @@ Les tests, et les contrats d'architecture (`lint-imports`) :
 cd apps/bank-api && uv run --env-file ../../.env pytest      # base démarrée et remplie
 cd apps/mcp-tools && uv run pytest && uv run lint-imports    # le test lance son serveur MCP ; banque simulée
 cd apps/portail-api && uv run pytest && uv run lint-imports  # banque simulée, paire de clés de test
-cd apps/agent-api && uv run pytest && uv run lint-imports    # sans Ollama ni serveur MCP (doublures)
+cd apps/rag-faq && uv run pytest && uv run lint-imports      # le test lance son serveur MCP ; sans Ollama ni base
+cd apps/agent-api && uv run pytest && uv run lint-imports    # sans Ollama ni serveurs MCP (doublures)
 cd apps/web && npm run lint && npm run typecheck
 ```
 
 La mesure de la recherche dans la FAQ (base et Ollama démarrés, FAQ indexée). Elle écrit [evals/faq/resultats.md](evals/faq/resultats.md) :
 
 ```bash
-cd apps/agent-api && uv run --env-file ../../.env python ../../evals/faq/mesurer.py
+cd apps/rag-faq && uv run --env-file ../../.env python ../../evals/faq/mesurer.py
 ```
 
 ## Ce que le projet mesure
@@ -145,10 +158,10 @@ Premiers chiffres mesurés, sur 38 questions de FAQ et 10 qui n'en sont pas :
 
 | Étape | Mesure | Résultat |
 |---|---|---|
-| 1. Le LLM (`qwen3:4b-instruct`) envoie la question à la FAQ | bon outil choisi | **53 %** (lettres arabes 20 %, latines 57 %, mélange 73 %). Il était à 26 % avant la correction du prompt système. |
+| 1. Le LLM (`qwen3:4b-instruct`) envoie la question à la FAQ | bon outil choisi | **47 %** (lettres arabes 20 %, latines 50 %, mélange 64 %). Il était à 26 % avant la correction du prompt système. |
 | 2. `bge-m3` retrouve la bonne fiche | hit@1 / hit@3 | **71 % / 89 %** (lettres arabes 60 %, latines 71 %, mélange 73 %) |
 
-Le maillon faible est le LLM : c'est ce que le benchmark (S4) comparera entre modèles. Le détail, échecs compris, est dans [evals/faq/resultats.md](evals/faq/resultats.md) et [evals/faq/routage.md](evals/faq/routage.md). La mesure du choix de l'outil se lance avec :
+Le maillon faible est le LLM : c'est ce que le benchmark (S4) comparera entre modèles. Il est aussi très sensible à la **mise en forme** : la même description d'outil, avec ou sans retours à la ligne, fait varier ce score de 42 à 53 %. C'est pourquoi le benchmark utilisera plus de questions, et ne comparera que des prompts mis en forme de la même façon. Le détail, échecs compris, est dans [evals/faq/resultats.md](evals/faq/resultats.md) et [evals/faq/routage.md](evals/faq/routage.md). La mesure du choix de l'outil se lance avec :
 
 ```bash
 cd apps/agent-api && uv run --env-file ../../.env python ../../evals/faq/routage.py

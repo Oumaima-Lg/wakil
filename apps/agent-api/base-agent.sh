@@ -1,5 +1,5 @@
 #!/bin/bash
-# Base séparée de l'agent Wakil (ses conversations et les vecteurs de la FAQ), avec son propre utilisateur.
+# Base séparée de l'agent Wakil (ses conversations), avec son propre utilisateur.
 # Moindre privilège : l'agent n'a aucun droit sur la base de la banque, il ne la lit qu'à travers bank-api.
 #
 # Lancé tout seul par PostgreSQL à la création du volume. Sur une base qui existe déjà, une seule fois :
@@ -23,8 +23,3 @@ SELECT format('CREATE DATABASE %I OWNER %I', :'base', :'agent')
 SELECT format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', :'banque') \gexec
 SELECT format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', :'base') \gexec
 SQL
-
-# pgvector (les vecteurs de la FAQ) : activer une extension demande le superutilisateur, d'où ce passage ici. Ensuite,
-# l'agent crée lui-même ses tables (voir app/faq.py).
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$AGENT_POSTGRES_DB" \
-  -c "CREATE EXTENSION IF NOT EXISTS vector"

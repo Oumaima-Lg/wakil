@@ -1,0 +1,38 @@
+[project]
+name = "rag-faq"
+version = "0.1.0"
+description = "Serveur MCP de la FAQ de la Banque Atlas Démo : retrouver la fiche qui répond (RAG, données 100 % fictives)."
+requires-python = ">=3.14"
+dependencies = [
+    "langchain-ollama>=1.1.0",
+    "mcp>=2.3",
+    "psycopg[binary,pool]>=3.3.6",
+    "pyyaml>=6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15",
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]  # permet aux tests de faire « from app.serveur import … »
+filterwarnings = ["ignore::DeprecationWarning:langsmith.*"]  # avertissement interne à LangChain, pas à notre code
+
+# Contrats d'architecture (équivalent d'ArchUnit), vérifiés par : uv run lint-imports
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "La recherche dans la FAQ ne dépend pas de MCP : serveur.py seul fait le branchement"
+type = "forbidden"
+source_modules = ["app.faq"]
+forbidden_modules = ["mcp"]
+
+[[tool.importlinter.contracts]]
+name = "rag-faq ne fait que chercher : ni agent, ni LLM qui rédige, ni appel à la banque"
+type = "forbidden"
+source_modules = ["app"]
+forbidden_modules = ["langgraph", "httpx"]

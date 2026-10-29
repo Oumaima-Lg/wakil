@@ -19,7 +19,14 @@ Trois difficultés :
 - **La recherche se fait par embeddings**, avec `bge-m3` (multilingue, local dans Ollama, 1024 nombres par phrase). Les vecteurs sont rangés dans la base de l'agent avec pgvector ; une fiche prend le score de la plus proche de ses phrases.
 - **La réponse est le texte de la fiche, cité tel quel.** Seule l'introduction est en darija. Le LLM ne fait que reconnaître une question de FAQ (outil `question_faq`, sans paramètre). On cherche avec **la phrase du client**, jamais avec une reformulation du LLM.
 - **Seuil : similarité cosinus de 0,60.** En dessous, Wakil répond « ma l9itch jawab f la FAQ ».
-- **La FAQ vit dans agent-api** : c'est la connaissance de l'agent, pas une donnée de client. mcp-tools reste la seule porte vers les données de la banque.
+- **La FAQ vit dans son propre service, `rag-faq`** (depuis le 29/10/2026 ; elle était d'abord un module d'agent-api). C'est un serveur MCP avec un seul outil, `question_faq`, et sa propre base `wakil_faq`. Le LLM décide ; agent-api appelle l'outil avec la phrase du client. Ce que ce découpage apporte :
+  - **cohérence** : agent-api atteint tout ce qui est hors de lui par MCP, et la description de l'outil vit dans le serveur, comme pour la banque ;
+  - **moindre privilège** : agent-api n'a plus aucun accès à l'index. Un agent piégé ne peut pas empoisonner la FAQ, et chaque outil n'est accepté que de son serveur ;
+  - **cycle de vie propre** : l'indexation et la comparaison des modèles d'embeddings (S4) se font dans `rag-faq` sans toucher à l'agent ;
+  - **minimisation des données** : la FAQ est publique, `rag-faq` ne reçoit pas l'identité du client.
+
+  Coût : un sixième service à lancer. Si `rag-faq` est en panne, la banque continue de marcher ; seule la FAQ manque.
+  Ce choix suit le schéma courant de l'« agentic RAG », où la recherche est un outil exposé par MCP et l'agent décide quand l'appeler ([Knit](https://getknit.dev/blog/powering-rag-and-agent-memory-with-mcp/), [Agentic-rag-mcp](https://github.com/akshayvarala/Agentic-rag-mcp)).
 
 ## Mesures (27/10/2026)
 
@@ -56,13 +63,19 @@ Temps de recherche : médiane 59 ms quand `bge-m3` est déjà chargé.
 Le premier essai d'Oumaima a révélé deux défauts, corrigés puis mesurés sur les 48 questions :
 
 1. **Bug du prompt système** : écrit avant la FAQ, il ordonnait « si la demande concerne son compte, appelle l'outil adapté […] **sinon, réponds que tu ne t'occupes que de la banque** ». Il dit maintenant quand appeler `question_faq`. Le rapport d'avant est gardé dans [`routage-avant-correction.md`](../../evals/faq/routage-avant-correction.md).
-2. **Les refus dans l'historique** : un petit modèle qui vient de refuser refuse encore. « comment ajouter un Bénéficiaire ? » allait à la FAQ seule, mais au refus après deux refus. Les refus restent affichés dans le chat, mais le LLM ne les lit plus.
+2. **Le LLM imitait les réponses de Wakil** : un petit modèle continue ce qu'il voit. Relisant des réponses écrites en phrases, il répondait par une phrase au lieu de choisir un outil. Dans une même conversation, « kifach nzid bénéficiaire jdid ? » est allée à la FAQ la première fois, puis au refus. Correction : le LLM relit la conversation au **format standard des appels d'outils**, c'est-à-dire la demande du client, l'outil appelé, puis « fait », **sans le texte des réponses ni les données** (`pour_le_llm` dans `agent.py`). Le texte reste en mémoire et dans le chat. Montrer seulement les messages du client corrigeait l'imitation, mais causait une régression : « w les transactions ? » après le solde redonnait le solde. Le format standard règle les deux cas.
+
+   Gain de sécurité : les réponses contiennent les libellés des opérations, que n'importe qui peut écrire (un virement reçu). Un libellé piégé n'atteint plus le LLM par l'historique (test `test_un_libelle_piege_n_atteint_pas_le_llm`). Ce choix convient parce que, dans Wakil, le LLM choisit l'outil et le code écrit la réponse. Si un jour le LLM rédige les réponses (RAG complet, voir plus bas), il devra relire ses réponses, et la protection contre les libellés piégés devra être revue.
 
 | Choix de l'outil | Avant | Après |
 |---|---|---|
 | Questions de FAQ → `question_faq` | 26 % (lettres arabes 0 %) | **53 %** (lettres arabes 20 %) |
 | Demandes sur le compte → leur outil | 80 % | 80 % |
 | Hors sujet → aucun outil | 80 % | 100 % |
+
+**Sensibilité à la mise en forme (29/10/2026).** Après le passage de la FAQ dans `rag-faq`, sa description vient de la docstring du serveur, avec ses retours à la ligne. Le score est passé de 53 % à **47 %** (2 questions sur 38). Avec toutes les descriptions remises sur une ligne, il tombe à 42 %. Le LLM est pourtant stable : même question et même prompt donnent toujours la même réponse. Seule la mise en forme change le résultat.
+
+On garde la description telle que le serveur l'annonce, sans la retoucher pour gagner deux questions : ce serait ajuster le système sur ses propres questions de test. Le benchmark (S4) devra utiliser plus de questions et ne comparer que des prompts mis en forme de la même façon.
 
 ## Conséquences
 

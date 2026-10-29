@@ -33,7 +33,7 @@ Pour chaque seuil : ce que Wakil ferait. Une question de FAQ est **bien servie**
 
 Meilleur score d'une question hors FAQ : **0.77**. Plus faible score d'une question de FAQ bien classée : **0.55**.
 
-Temps de recherche (vecteur de la question + requête pgvector) : médiane 59 ms, maximum 19189 ms.
+Temps de recherche (vecteur de la question + requête pgvector) : médiane 71 ms, maximum 7927 ms.
 
 ## Détail de chaque question
 

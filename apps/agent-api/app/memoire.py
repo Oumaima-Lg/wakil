@@ -1,4 +1,4 @@
-"""La base séparée de l'agent (voir base-agent.sh) : ses conversations, et les vecteurs de la FAQ (voir faq.py).
+"""La base séparée de l'agent (voir base-agent.sh) : ses conversations.
 
 Avec InMemorySaver, tout vivait en mémoire vive : un redémarrage d'agent-api effaçait les conversations, et
 surtout les paiements qui attendaient « Wach nconfirmi ? ». Avec PostgresSaver, l'état est écrit après chaque
@@ -21,7 +21,7 @@ def base_configuree() -> bool:
 
 @contextmanager
 def pool_agent() -> Iterator[ConnectionPool]:
-    """Un pool de connexions vers la base de l'agent, partagé par la mémoire des conversations et la FAQ."""
+    """Un pool de connexions vers la base de l'agent."""
     conninfo = make_conninfo(
         host=os.environ.get("POSTGRES_HOST", "localhost"),
         port=os.environ.get("POSTGRES_PORT", "5432"),

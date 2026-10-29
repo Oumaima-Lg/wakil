@@ -1,7 +1,7 @@
 """Mesure la recherche dans la FAQ sur les questions de test (evals/faq/questions.yaml), qui sont différentes des
 questions écrites dans les fiches.
 
-Lancer depuis apps/agent-api (base et Ollama démarrés, FAQ indexée avec python -m app.faq) :
+Lancer depuis apps/rag-faq (base et Ollama démarrés, FAQ indexée avec python -m app.faq) :
   uv run --env-file ../../.env python ../../evals/faq/mesurer.py
 Écrit evals/faq/resultats.md : chiffres par écriture, choix du seuil, et le détail de chaque question (échecs compris).
 """
@@ -14,10 +14,9 @@ from pathlib import Path
 import yaml
 
 ICI = Path(__file__).resolve().parent
-sys.path.insert(0, str(ICI.parents[1] / "apps" / "agent-api"))  # le code de l'agent (app.faq), sans le copier
+sys.path.insert(0, str(ICI.parents[1] / "apps" / "rag-faq"))  # le code du service de la FAQ, sans le copier
 
 from app import faq  # noqa: E402
-from app.memoire import pool_agent  # noqa: E402
 
 ECRITURES = {
     "arabe": "Lettres arabes",
@@ -122,8 +121,6 @@ def mesurer() -> str:
 
 
 if __name__ == "__main__":
-    with pool_agent() as pool:
-        faq.configurer(pool)
-        rapport = mesurer()
+    rapport = mesurer()
     (ICI / "resultats.md").write_text(rapport, encoding="utf-8")
     print(rapport)

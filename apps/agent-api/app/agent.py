@@ -6,10 +6,9 @@ aucune opération sans un « oui » explicite.
 
 import os
 import unicodedata
-from dataclasses import asdict
 from typing import Annotated, Literal, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -17,7 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import Command, interrupt
 
-from app import faq, outils, reponses
+from app import outils, reponses
 
 SYSTEME = (
     "Tu es Wakil, l'assistant de la Banque Atlas Démo (banque fictive). "
@@ -50,21 +49,9 @@ OUTILS = {
     "lister_factures": (lire("lister_factures", "factures"), reponses.factures),
 }
 OPERATIONS = {"payer_facture": "paiement", "faire_virement": "virement"}
-# La FAQ n'est pas un outil de la banque : elle vit dans agent-api (voir faq.py), sa description est donc écrite ici.
-# Sans paramètre : on cherche avec la phrase du client, pas avec une reformulation du LLM.
+# La FAQ : l'outil du serveur MCP de la FAQ (apps/rag-faq), qui retrouve la fiche qui répond. Son paramètre est rempli
+# par l'application avec la phrase du client, jamais par le LLM (voir outils.REMPLIS_PAR_L_APPLICATION).
 OUTIL_FAQ = "question_faq"
-DESCRIPTION_FAQ = {
-    "type": "function",
-    "function": {
-        "name": OUTIL_FAQ,
-        "description": (
-            "Répond aux questions générales sur la Banque Atlas Démo et sur Wakil : frais et tarifs, plafond et délai "
-            "des virements, bénéficiaires, carte perdue ou volée, codes et sécurité, découvert, données, horaires. "
-            "Pas pour le compte du client (solde, opérations, factures à payer), ni pour payer ou virer."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
-    },
-}
 SALUTATIONS = {"salam", "slm", "salam 3likom", "salam alaykom", "سلام", "السلام عليكم"}
 # Accusés de réception et remerciements : ni une demande, ni du hors-sujet.
 POLITESSES = {
@@ -75,23 +62,26 @@ POLITESSES = {
 OUI = {"oui", "oui, confirmer", "ah", "iyeh", "iyyeh", "wakha", "yes", "ok", "confirmer", "نعم", "اه", "واخا"}
 NON = {"non", "non, annuler", "la", "lla", "no", "annuler", "لا"}
 
-# Le LLM est créé au premier message, avec les outils que le serveur MCP annonce (tools/list), plus la FAQ.
+# Le LLM est créé au premier message, avec les outils que les serveurs MCP annoncent (tools/list).
 llm = None
 
 
 def le_llm():
     global llm
     if llm is None:
-        llm = ChatOllama(
+        descriptions, complet = outils.descriptions_pour_le_llm({*OUTILS, OUTIL_FAQ}, set(OPERATIONS))
+        modele = ChatOllama(
             model=os.environ.get("WAKIL_MODELE", "qwen3:4b-instruct"),
             temperature=0,
             num_predict=100,  # assez pour un appel d'outil ; son texte libre ne nous sert pas
-        ).bind_tools([*outils.descriptions_pour_le_llm(set(OUTILS), set(OPERATIONS)), DESCRIPTION_FAQ])
+        ).bind_tools(descriptions)
+        if not complet:
+            return modele  # le serveur de la FAQ ne répondait pas : on redemandera la liste au prochain message
+        llm = modele
     return llm
 
 
-HISTORIQUE = 6  # le LLM voit les 6 derniers messages (3 échanges) : assez pour « c'est tout ? », et rapide
-REFUS_CACHES = {reponses.REFUS, reponses.FAQ_INTROUVABLE}  # jamais montrés au LLM (voir comprendre)
+HISTORIQUE = 3  # le LLM relit les 3 derniers messages du client (voir pour_le_llm) : assez pour « c'est tout ? »
 
 
 class Etat(TypedDict, total=False):
@@ -156,9 +146,41 @@ def prochaine_entree(graphe, demande: str, client_id: int, conf: dict, facture_i
     return nouveau_tour(demande, client_id, facture_id)
 
 
-def dire(texte: str) -> dict:
-    """La réponse de Wakil, ajoutée aussi à l'historique pour les messages suivants."""
-    return {"reponse": texte, "messages": [AIMessage(texte)]}
+def dire(texte: str, outil: str | None = None) -> dict:
+    """La réponse de Wakil, ajoutée aussi à la mémoire. outil : celui que le LLM avait choisi pour ce tour ; c'est tout
+    ce que le LLM relira de cette réponse (voir pour_le_llm)."""
+    return {"reponse": texte, "messages": [AIMessage(texte, additional_kwargs={"outil": outil} if outil else {})]}
+
+
+# Ce que le LLM relit à la place d'une réponse de Wakil : l'outil appelé, puis « fait », sans le texte ni les données.
+FAIT = "Fait : la réponse a été affichée au client."
+
+
+def pour_le_llm(messages: list[AnyMessage]) -> list[AnyMessage]:
+    """La conversation telle que le LLM la relit : les messages du client et, pour chaque réponse de Wakil, seulement
+    l'outil qui avait été choisi, au format standard des appels d'outils (appel, puis résultat « fait »).
+
+    Le texte des réponses reste en mémoire et dans le chat, mais le LLM ne le relit jamais :
+    - un petit modèle imite ce qu'il voit : relisant des réponses en phrases, il répondait par une phrase au lieu de
+      choisir un outil (mesuré le 27/10/2026 : la même question allait à la FAQ seule, et au refus après une réponse) ;
+    - les réponses contiennent les données du compte, comme les libellés des opérations : un texte piégé dans un
+      libellé ne peut pas atteindre le LLM par ce chemin.
+    Voir l'appel d'outil passé lui montre aussi que la demande d'avant est traitée : « w les transactions ? » après le
+    solde n'est plus confondu avec la question du solde. Une réponse sans outil (salut, refus) n'est pas relue.
+    """
+    lus: list[AnyMessage] = []
+    for numero, message in enumerate(messages):
+        if isinstance(message, HumanMessage):
+            lus.append(message)
+        elif outil := message.additional_kwargs.get("outil"):
+            appel = f"tour-{numero}"
+            lus += [
+                AIMessage("", tool_calls=[{"name": outil, "args": {}, "id": appel}]),
+                ToolMessage(FAIT, tool_call_id=appel),
+            ]
+    # Les HISTORIQUE derniers messages du client, avec ce qui les suit.
+    debuts = [i for i, message in enumerate(lus) if isinstance(message, HumanMessage)][-HISTORIQUE:]
+    return lus[debuts[0] :] if debuts else lus
 
 
 def simplifier(texte: str) -> str:
@@ -188,14 +210,9 @@ def remercier(etat: Etat) -> dict:
 
 
 def comprendre(etat: Etat) -> dict:
-    """Le LLM lit la demande, avec les derniers messages pour le contexte, et choisit un outil (et ses paramètres) ou aucun.
-
-    Les refus restent affichés dans le chat, mais le LLM ne les lit pas : un petit modèle qui vient de refuser a
-    tendance à refuser encore (mesuré le 27/10/2026 : « comment ajouter un Bénéficiaire ? » allait à la FAQ seule,
-    et au refus après deux refus).
-    """
-    historique = [m for m in etat["messages"] if not (isinstance(m, AIMessage) and m.content in REFUS_CACHES)]
-    message = le_llm().invoke([SystemMessage(SYSTEME), *historique[-HISTORIQUE:]])
+    """Le LLM lit la demande, avec la conversation récente pour le contexte (voir pour_le_llm), et choisit un outil
+    (et ses paramètres) ou aucun."""
+    message = le_llm().invoke([SystemMessage(SYSTEME), *pour_le_llm(etat["messages"])])
     appel = message.tool_calls[0] if message.tool_calls else None
     # Un nom d'outil inventé par le LLM est traité comme « aucun outil ».
     if appel is None or appel["name"] not in {*OUTILS, *OPERATIONS, OUTIL_FAQ}:
@@ -223,9 +240,9 @@ def executer_outil(etat: Etat) -> dict:
 def repondre(etat: Etat) -> dict:
     """Le code met le résultat de la banque en phrase."""
     if etat.get("erreur"):
-        return dire(reponses.ERREUR)
+        return dire(reponses.ERREUR, etat["outil"])
     _, formuler = OUTILS[etat["outil"]]
-    return dire(formuler(etat["resultat"]))
+    return dire(formuler(etat["resultat"]), etat["outil"])
 
 
 def refuser(etat: Etat) -> dict:
@@ -233,14 +250,17 @@ def refuser(etat: Etat) -> dict:
 
 
 def repondre_faq(etat: Etat) -> dict:
-    """La fiche de la FAQ la plus proche de la phrase du client (ses mots, pas ceux du LLM), citée telle quelle."""
+    """La fiche de la FAQ la plus proche de la phrase du client (ses mots, pas ceux du LLM), citée telle quelle.
+
+    La recherche est faite par le serveur MCP de la FAQ (apps/rag-faq), qui ne reçoit pas l'identité du client.
+    """
     try:
-        trouvaille = faq.chercher(etat["demande"])
-    except faq.FaqIndisponible:
-        return {"erreur": True, **dire(reponses.FAQ_INDISPONIBLE)}
-    if trouvaille is None:  # aucune fiche assez proche : on le dit au lieu d'en citer une qui ne répond pas
-        return dire(reponses.FAQ_INTROUVABLE)
-    return {"resultat": asdict(trouvaille), **dire(reponses.faq(trouvaille.titre, trouvaille.texte))}
+        fiche = outils.appeler(None, OUTIL_FAQ, {"question": etat["demande"]})["fiche"]
+    except outils.OutilsIndisponibles:
+        return {"erreur": True, **dire(reponses.FAQ_INDISPONIBLE, OUTIL_FAQ)}
+    if fiche is None:  # aucune fiche assez proche : on le dit au lieu d'en citer une qui ne répond pas
+        return dire(reponses.FAQ_INTROUVABLE, OUTIL_FAQ)
+    return {"resultat": fiche, **dire(reponses.faq(fiche["titre"], fiche["texte"]), OUTIL_FAQ)}
 
 
 def preparer_operation(etat: Etat) -> dict:
@@ -254,9 +274,9 @@ def preparer_operation(etat: Etat) -> dict:
     try:
         apercu = outils.appeler(etat["client_id"], etat["outil"], etat.get("arguments") or {})
     except outils.RefusOutil as refus:
-        return dire(reponses.refus(type_operation, refus.detail))
+        return dire(reponses.refus(type_operation, refus.detail), etat["outil"])
     except outils.OutilsIndisponibles:
-        return {"erreur": True, **dire(reponses.ERREUR)}
+        return {"erreur": True, **dire(reponses.ERREUR, etat["outil"])}
 
     operation = {"type": type_operation, **apercu}
     operation |= {
@@ -265,7 +285,8 @@ def preparer_operation(etat: Etat) -> dict:
         "texte": reponses.confirmation(operation),  # le tout en une phrase : historique du LLM, terminal
     }
     # La question entre dans l'historique ; la réponse du client y entrera à la reprise.
-    return {"operation": operation, "messages": [AIMessage(operation["texte"])]}
+    question = AIMessage(operation["texte"], additional_kwargs={"outil": etat["outil"]})
+    return {"operation": operation, "messages": [question]}
 
 
 def apres_preparation(etat: Etat) -> Literal["demander_confirmation", "__end__"]:
@@ -303,14 +324,14 @@ def executer_operation(etat: Etat) -> dict:
     try:
         resultat = outils.appeler(client_id, etat["outil"], arguments, confirme=True)
     except outils.RefusOutil as refus:  # la situation a changé entre la carte et le « oui »
-        return {**outil, "issue": "refusee", **dire(reponses.refus(operation["type"], refus.detail))}
+        return {**outil, "issue": "refusee", **dire(reponses.refus(operation["type"], refus.detail), etat["outil"])}
     except outils.OutilsIndisponibles:
-        return {**outil, "issue": "erreur", "erreur": True, **dire(reponses.ERREUR_OPERATION)}
+        return {**outil, "issue": "erreur", "erreur": True, **dire(reponses.ERREUR_OPERATION, etat["outil"])}
     return {
         **outil,
         "issue": "faite",
         "resultat": resultat,
-        **dire(reponses.operation_faite(operation["type"], resultat)),
+        **dire(reponses.operation_faite(operation["type"], resultat), etat["outil"]),
     }
 
 
@@ -318,8 +339,8 @@ def annuler(etat: Etat) -> dict:
     """« La », ou une réponse qui n'est ni oui ni non : on ne touche à rien."""
     outil = {"outil": etat["outil"]}
     if etat.get("confirmation") == "non":
-        return {**outil, "issue": "annulee", **dire(reponses.ANNULEE[etat["operation"]["type"]])}
-    return {**outil, "issue": "incomprise", **dire(reponses.CONFIRMATION_INCOMPRISE)}
+        return {**outil, "issue": "annulee", **dire(reponses.ANNULEE[etat["operation"]["type"]], etat["outil"])}
+    return {**outil, "issue": "incomprise", **dire(reponses.CONFIRMATION_INCOMPRISE, etat["outil"])}
 
 
 graphe = StateGraph(Etat)

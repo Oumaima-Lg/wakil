@@ -4,18 +4,18 @@ LLM : `qwen3:4b-instruct` · 48 questions · généré par `evals/faq/routage.py
 
 | Groupe | Bon outil choisi |
 |---|---|
-| Questions de FAQ → question_faq | 53 % (20/38) |
+| Questions de FAQ → question_faq | 47 % (18/38) |
 | Demandes sur le compte → leur outil | 80 % (4/5) |
 | Hors sujet → aucun outil | 100 % (5/5) |
 
 Questions de FAQ envoyées à `question_faq`, par écriture :
 
 - arabe : 20 % (2/10)
-- latin : 57 % (8/14)
-- melange : 73 % (8/11)
+- latin : 50 % (7/14)
+- melange : 64 % (7/11)
 - francais : 67 % (2/3)
 
-Temps du choix (un appel au LLM) : médiane 2.1 s, maximum 9.5 s.
+Temps du choix (un appel au LLM) : médiane 3.8 s, maximum 71.2 s.
 
 ## Détail
 
@@ -31,12 +31,12 @@ Temps du choix (un appel au LLM) : médiane 2.1 s, maximum 9.5 s.
 | إلا ما كفاش الصولد واش غادي تخلص الفاتورة؟ | arabe | question_faq | consulter_solde | ❌ |
 | واش المعلومات ديالي كتمشي لشي بلاصة؟ | arabe | question_faq | (aucun) | ❌ |
 | واش نقدر نهضر معاك فالليل؟ | arabe | question_faq | (aucun) | ❌ |
-| wach kaykhlsoni ila sifet l chi bank khra ? | latin | question_faq | question_faq | ✅ |
+| wach kaykhlsoni ila sifet l chi bank khra ? | latin | question_faq | (aucun) | ❌ |
 | ch7al l7ed dyal l virement l wa7ed ? | latin | question_faq | question_faq | ✅ |
 | sift lflous l mama, imta twslha ? | latin | question_faq | faire_virement | ❌ |
-| kifach nkhelles facture dyal telephone ? | latin | question_faq | payer_facture | ❌ |
+| kifach nkhelles facture dyal telephone ? | latin | question_faq | question_faq | ✅ |
 | 3lach kaytl3 lia had l carte dyal confirmation ? | latin | question_faq | (aucun) | ❌ |
-| carte dyali mab9atch 3endi, tal9at lia | latin | question_faq | question_faq | ✅ |
+| carte dyali mab9atch 3endi, tal9at lia | latin | question_faq | (aucun) | ❌ |
 | wach nsifet lik mot de passe bach tchouf l compte ? | latin | question_faq | (aucun) | ❌ |
 | ma3endich flous bzaf, wach t9der tkhelles b credit ? | latin | question_faq | question_faq | ✅ |
 | chno lkhdma li kadirha nta ? | latin | question_faq | (aucun) | ❌ |
@@ -44,7 +44,7 @@ Temps du choix (un appel au LLM) : médiane 2.1 s, maximum 9.5 s.
 | les virements wach payants ? | melange | question_faq | question_faq | ✅ |
 | le maximum li n9der nvirer f une seule fois ch7al ? | melange | question_faq | question_faq | ✅ |
 | le virement kaykhd combien de temps ? | melange | question_faq | question_faq | ✅ |
-| ajouter un nouveau bénéficiaire, wach possible ? | melange | question_faq | question_faq | ✅ |
+| ajouter un nouveau bénéficiaire, wach possible ? | melange | question_faq | (aucun) | ❌ |
 | la facture d'électricité, wach t9der tpayiha ? | melange | question_faq | lister_factures | ❌ |
 | si je dis non f la confirmation chno kayw9e3 ? | melange | question_faq | (aucun) | ❌ |
 | j'ai perdu ma carte, chno khassni ndir ? | melange | question_faq | question_faq | ✅ |

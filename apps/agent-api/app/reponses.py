@@ -16,7 +16,7 @@ REFUS = (
 ERREUR = "Smeh lia, kayn mochkil f la banque daba. 3awed men ba3d."
 PANNE = "Smeh lia, Wakil ma khdamch daba. 3awed men ba3d."  # panne de l'agent lui-même (LLM injoignable…)
 
-# FAQ : le texte de la fiche est cité tel quel (voir faq.py) ; seule l'introduction est en darija.
+# FAQ : le texte de la fiche est cité tel quel (voir apps/rag-faq) ; seule l'introduction est en darija.
 FAQ_INTROUVABLE = (
     "Smeh lia, ma l9itch jawab 3la had so2al f la FAQ. "
     "N9der n3awnek f : solde, l'opérations, les factures w l'virement."

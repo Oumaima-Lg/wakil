@@ -7,7 +7,7 @@ import httpx
 import pytest
 from langchain_core.messages import AIMessage
 
-from app import agent, faq, main, outils, reponses
+from app import agent, main, outils, reponses
 from tests.sse import evenements
 
 
@@ -37,17 +37,18 @@ def test_chat_envoie_les_etapes_puis_la_reponse(salma, faux_llm, monkeypatch):
 
 def test_une_reponse_de_la_faq_porte_la_fiche_citee(salma, faux_llm, monkeypatch):
     faux_llm(agent.OUTIL_FAQ)
-    fiche = faq.Trouvaille("frais", "Frais et tarifs", "La Banque Atlas Démo ne prélève aucun frais.", 0.82)
-    monkeypatch.setattr(faq, "chercher", lambda question: fiche)
+    fiche = {"fiche": "frais", "titre": "Frais et tarifs", "texte": "La Banque Atlas Démo ne prélève aucun frais.",
+             "similarite": 0.82}  # fmt: skip
+    monkeypatch.setattr(outils, "appeler", lambda client_id, nom, arguments, confirme=False: {"fiche": fiche})
 
     reponse = salma.post("/chat", json={"conversation_id": str(uuid.uuid4()), "texte": "wach l virement fih frais ?"})
 
     assert evenements(reponse)[-2] == (
         "reponse",
         {
-            "texte": reponses.faq(fiche.titre, fiche.texte),
+            "texte": reponses.faq(fiche["titre"], fiche["texte"]),
             "outil": "question_faq",
-            "donnees": {"fiche": "frais", "titre": "Frais et tarifs", "texte": fiche.texte, "similarite": 0.82},
+            "donnees": fiche,
             "erreur": False,
             "issue": None,
         },
