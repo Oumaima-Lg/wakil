@@ -172,7 +172,7 @@ cd apps/agent-api && uv run --env-file ../../.env python ../../evals/faq/routage
 - [x] S0 — Premiers appels d'outils avec Ollama
 - [x] S1 — Banque fictive (API + fausses données)
 - [x] S2 — Agent LangGraph + interface Next.js (espace bancaire, chat en direct, version mobile)
-- [ ] S3 — Confirmation, serveur MCP, RAG sur la FAQ
+- [x] S3 — Confirmation avant chaque opération, serveurs MCP (banque, FAQ), RAG sur la FAQ avec réponses citées
 - [ ] S4 — Benchmark darija
 - [ ] S5 — Sécurité + CI avec évaluation bloquante
 - [ ] S6 — Déploiement Azure avec Terraform
