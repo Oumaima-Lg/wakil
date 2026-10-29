@@ -13,24 +13,25 @@ def resultat(appel):
 # --- Ce que le serveur annonce ------------------------------------------------------------------------------------
 
 
-def test_le_serveur_annonce_ses_cinq_outils_et_ce_qu_ils_font(mcp):
+def test_le_serveur_annonce_ses_six_outils_et_ce_qu_ils_font(mcp):
     outils = {o.name: o for o in mcp.lister()}
 
     assert sorted(outils) == [
+        "consulter_plafond",
         "consulter_solde",
         "faire_virement",
         "lister_factures",
         "lister_transactions",
         "payer_facture",
     ]
-    for lecture in ("consulter_solde", "lister_transactions", "lister_factures"):
+    for lecture in ("consulter_solde", "consulter_plafond", "lister_transactions", "lister_factures"):
         assert outils[lecture].annotations.read_only_hint is True
     for operation in ("payer_facture", "faire_virement"):
         assert (
             outils[operation].annotations.destructive_hint is True
         )  # un client bien fait demande l'accord de l'humain
     fournisseur = outils["payer_facture"].input_schema["properties"]["fournisseur"]
-    assert fournisseur["anyOf"][0]["enum"] == ["eau_electricite", "internet", "mobile"]  # liste fermée
+    assert fournisseur["anyOf"][0]["enum"] == ["eau_electricite", "internet", "mobile", "toutes"]  # liste fermée
 
 
 # --- Le client vient de l'en-tête, jamais d'un argument -----------------------------------------------------------
@@ -104,6 +105,49 @@ def test_le_refus_de_la_banque_est_transmis_avec_ses_chiffres(mcp):
         "solde": "150.00",
         "montant": "349.00",
     }
+
+
+# --- Plafond, « toutes les factures » et facture désignée par son montant (morceau 15) ------------------------------
+
+
+def test_le_plafond_du_compte_du_client(mcp):
+    assert resultat(mcp("consulter_plafond", client_id=3)) == {"plafond_virement": "2000.00"}
+
+
+def test_toutes_les_factures_une_a_la_fois(mcp, fausse_banque):
+    """Une carte de confirmation par facture : s'il y en a plusieurs, on demande laquelle, sans rien vérifier."""
+    refus = resultat(mcp("payer_facture", {"fournisseur": "toutes"}))["refus"]
+
+    assert refus["code"] == "une_a_la_fois"
+    assert refus["factures"] == [{"fournisseur": "Eau & Électricité (démo)", "montant": "312.00"},
+                                 {"fournisseur": "Internet (démo)", "montant": "249.00"}]  # fmt: skip
+    assert fausse_banque.appels == []
+
+
+def test_toutes_avec_une_seule_facture_on_prepare_celle_ci(mcp, fausse_banque):
+    resultat(mcp("payer_facture", {"fournisseur": "toutes"}, client_id=2))
+
+    assert fausse_banque.appels == [("paiement", 2, 7, True)]  # la seule facture de Youssef, vérifiée à blanc
+
+
+@pytest.mark.parametrize("montant", [249, "249 DH", "249,00"])
+def test_une_facture_designee_par_son_montant(mcp, montant):
+    apercu = resultat(mcp("payer_facture", {"montant": montant}))
+
+    assert (apercu["facture_id"], apercu["fournisseur"], apercu["simulation"]) == (2, "Internet (démo)", True)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "code"),
+    [
+        ({"montant": 999}, "facture_absente"),
+        ({"fournisseur": "eau_electricite", "montant": 249}, "facture_absente"),  # l'eau coûte 312 DH, pas 249
+        ({"montant": "bezaf"}, "montant_invalide"),
+    ],
+)
+def test_un_montant_sans_facture_correspondante_donne_un_refus(mcp, fausse_banque, arguments, code):
+    assert resultat(mcp("payer_facture", arguments))["refus"]["code"] == code
+    assert fausse_banque.appels == []
 
 
 # --- Virement : trouver le bénéficiaire et lire le montant --------------------------------------------------------

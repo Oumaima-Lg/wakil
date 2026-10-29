@@ -58,6 +58,12 @@ def consulter_solde(ctx: Context) -> dict[str, Any]:
     return banque.solde(client_de(ctx))
 
 
+@serveur.tool(title="Plafond de virement", annotations=LECTURE, structured_output=True)
+def consulter_plafond(ctx: Context) -> dict[str, Any]:
+    """Donne le plafond de virement du compte du client : le montant maximum d'un seul virement."""
+    return {"plafond_virement": banque.compte(client_de(ctx))["plafond_virement"]}
+
+
 @serveur.tool(title="Dernières opérations", annotations=LECTURE, structured_output=True)
 def lister_transactions(ctx: Context) -> dict[str, Any]:
     """Liste les dernières opérations du compte du client (dépenses, virements reçus)."""
@@ -74,8 +80,17 @@ def lister_factures(ctx: Context) -> dict[str, Any]:
 def payer_facture(
     ctx: Context,
     fournisseur: Annotated[
-        Literal["eau_electricite", "internet", "mobile"] | None,
-        Field(description="eau_electricite pour l'eau ou l'électricité, internet, ou mobile (téléphone)."),
+        Literal["eau_electricite", "internet", "mobile", "toutes"] | None,
+        Field(
+            description="eau_electricite pour l'eau ou l'électricité, internet, mobile (téléphone), "
+            "ou toutes si le client veut tout payer."
+        ),
+    ] = None,
+    montant: Annotated[
+        float | str | None,
+        Field(
+            description="Le montant de la facture, seulement si le client la désigne ainsi (« la facture de 249 DH »)."
+        ),
     ] = None,
     facture_id: Annotated[
         int | None, Field(description="Identifiant exact de la facture, donné par l'application : jamais à deviner.")
@@ -84,7 +99,7 @@ def payer_facture(
     """Paye une facture impayée du client (eau et électricité, internet, mobile). En darija, le client dit
     « khelless », « khalles », « nkhelless » ou « خلص ». Sans la confirmation du client, l'outil vérifie seulement :
     rien n'est payé."""
-    return operations.payer_facture(client_de(ctx), fournisseur, facture_id, confirme(ctx))
+    return operations.payer_facture(client_de(ctx), fournisseur, facture_id, confirme(ctx), montant)
 
 
 @serveur.tool(title="Faire un virement", annotations=OPERATION, structured_output=True)

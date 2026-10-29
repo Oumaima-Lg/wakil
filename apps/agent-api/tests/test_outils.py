@@ -86,6 +86,22 @@ def test_le_llm_ne_voit_pas_la_question_que_remplit_l_application():
     assert schema == {"type": "object", "properties": {}, "required": []}
 
 
+def test_le_montant_d_une_facture_reste_facultatif_pour_le_llm():
+    """Sinon le LLM inventerait un montant pour « khelless l'eau »."""
+    schema = {
+        "properties": {
+            "fournisseur": {"anyOf": [{"enum": ["eau_electricite", "toutes"], "type": "string"}, {"type": "null"}]},
+            "montant": {"anyOf": [{"type": "number"}, {"type": "string"}, {"type": "null"}]},
+            "facture_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        }
+    }
+
+    simple = outils.schema_pour_le_llm(schema, optionnels=outils.OPTIONNELS_POUR_LE_LLM["payer_facture"])
+
+    assert list(simple["properties"]) == ["fournisseur", "montant"]
+    assert simple["required"] == ["fournisseur"]
+
+
 def test_le_client_n_est_dit_qu_au_serveur_de_la_banque():
     assert outils._entetes(outils.MCP_TOOLS_URL, 1) == {"X-Client-Id": "1"}
     assert outils._entetes(outils.MCP_FAQ_URL, 1) == {}

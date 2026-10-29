@@ -24,13 +24,24 @@ CONFIRMATION = "wakil/confirmation"
 # proposerait faire_virement) serait ignoré.
 SERVEUR_DE = {
     **dict.fromkeys(
-        ["consulter_solde", "lister_transactions", "lister_factures", "payer_facture", "faire_virement"], MCP_TOOLS_URL
+        [
+            "consulter_solde",
+            "consulter_plafond",
+            "lister_transactions",
+            "lister_factures",
+            "payer_facture",
+            "faire_virement",
+        ],
+        MCP_TOOLS_URL,
     ),
     "question_faq": MCP_FAQ_URL,
 }
 # Les paramètres que l'application remplit elle-même, cachés au LLM (en plus des « …_id ») : pour la FAQ, on cherche
 # avec la phrase du client, jamais avec une reformulation du LLM.
 REMPLIS_PAR_L_APPLICATION = {"question_faq": {"question"}}
+# Les paramètres que le LLM peut laisser vides : tous les autres lui sont présentés comme obligatoires, sinon un petit
+# modèle les oublie. Le montant d'une facture ne sert que si le client la désigne ainsi (« la facture de 249 DH »).
+OPTIONNELS_POUR_LE_LLM = {"payer_facture": {"montant"}}
 
 journal = logging.getLogger(__name__)
 
@@ -97,10 +108,12 @@ def _lister() -> tuple[list[tuple[str, object]], bool]:
     return annonces, True
 
 
-def schema_pour_le_llm(schema: dict, caches: set[str] | frozenset[str] = frozenset()) -> dict:
+def schema_pour_le_llm(
+    schema: dict, caches: set[str] | frozenset[str] = frozenset(), optionnels: set[str] | frozenset[str] = frozenset()
+) -> dict:
     """Le schéma d'un outil, simplifié pour le LLM : sans les identifiants (« …_id » : donnés par l'application,
     jamais devinés) ni les paramètres que l'application remplit (caches), sans les « ou rien » (null), et chaque
-    paramètre restant devient obligatoire."""
+    paramètre restant devient obligatoire, sauf les optionnels."""
     proprietes = {}
     for nom, propriete in schema.get("properties", {}).items():
         if nom.endswith("_id") or nom in caches:
@@ -110,7 +123,11 @@ def schema_pour_le_llm(schema: dict, caches: set[str] | frozenset[str] = frozens
         if "description" in propriete:
             simple["description"] = propriete["description"]
         proprietes[nom] = simple
-    return {"type": "object", "properties": proprietes, "required": list(proprietes)}
+    return {
+        "type": "object",
+        "properties": proprietes,
+        "required": [nom for nom in proprietes if nom not in optionnels],
+    }
 
 
 def descriptions_pour_le_llm(lectures: set[str], operations: set[str]) -> tuple[list[dict], bool]:
@@ -140,7 +157,9 @@ def descriptions_pour_le_llm(lectures: set[str], operations: set[str]) -> tuple[
                     "name": outil.name,
                     "description": outil.description,  # telle que le serveur l'annonce, sans retouche
                     "parameters": schema_pour_le_llm(
-                        outil.input_schema, REMPLIS_PAR_L_APPLICATION.get(outil.name, set())
+                        outil.input_schema,
+                        REMPLIS_PAR_L_APPLICATION.get(outil.name, set()),
+                        OPTIONNELS_POUR_LE_LLM.get(outil.name, set()),
                     ),
                 },
             }

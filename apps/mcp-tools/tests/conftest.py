@@ -44,6 +44,9 @@ class FausseBanque:
         self.appels.append(("solde", client_id))
         return {"compte_id": client_id, "solde": f"{self.soldes[client_id]:.2f}", "devise": "DH"}
 
+    def compte(self, client_id):
+        return {"id": client_id, "rib_masque": "•••• 9114", "plafond_virement": f"{PLAFONDS[client_id]:.2f}"}
+
     def transactions(self, client_id):
         return [{"id": 11, "date": "2026-10-21T09:25:00Z", "montant": "-57.98", "libelle": "Café"}]
 
@@ -91,7 +94,7 @@ class FausseBanque:
 def fausse_banque(monkeypatch):
     """Le serveur tourne dans ce même processus : remplacer les fonctions de app.banque suffit."""
     fausse = FausseBanque()
-    for nom in ("solde", "transactions", "factures_impayees", "beneficiaires", "payer", "virer"):
+    for nom in ("solde", "compte", "transactions", "factures_impayees", "beneficiaires", "payer", "virer"):
         monkeypatch.setattr(banque, nom, getattr(fausse, nom))
     return fausse
 

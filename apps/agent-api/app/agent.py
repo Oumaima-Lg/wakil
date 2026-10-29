@@ -45,6 +45,7 @@ def lire(nom: str, cle: str | None = None):
 # Les trois premiers lisent ; les deux derniers déplacent de l'argent, donc passent par la carte de confirmation.
 OUTILS = {
     "consulter_solde": (lire("consulter_solde"), reponses.solde),
+    "consulter_plafond": (lire("consulter_plafond"), reponses.plafond),
     "lister_transactions": (lire("lister_transactions", "transactions"), reponses.transactions),
     "lister_factures": (lire("lister_factures", "factures"), reponses.factures),
 }

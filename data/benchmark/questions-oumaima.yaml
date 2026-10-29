@@ -1,0 +1,118 @@
+# Questions du benchmark darija, écrites par Oumaima (50). Données 100 % fictives.
+#
+# Le client est toujours Salma Alaoui (cliente de démo n° 1) :
+#   - solde : 2 350 DH ; plafond de virement : 10 000 DH par virement ;
+#   - factures à payer : Eau & Électricité (démo) 312 DH, Internet (démo) 249 DH ;
+#   - un seul bénéficiaire enregistré : Fatima Lahlou.
+#
+# Règles :
+#   1. Écris comme tu écrirais vraiment à une banque : fautes de frappe, abréviations et mélange avec le français sont
+#      les bienvenus.
+#   2. Varie les écritures : environ un tiers en lettres arabes, un tiers en lettres latines, un tiers en mélange.
+#   3. Des phrases NOUVELLES : ne reprends ni tes messages du 29/10, ni les questions de data/faq/faq.yaml ou de
+#      evals/faq/questions.yaml (ces phrases ont déjà servi à régler Wakil ; les réutiliser fausserait la mesure).
+#   4. Pour chaque question : ce que Wakil DOIT faire (l'outil), et seulement les arguments que le client a donnés.
+#
+# Les outils et leurs arguments :
+#   consulter_solde · consulter_plafond · lister_transactions · lister_factures       (aucun argument)
+#   payer_facture   fournisseur : eau_electricite | internet | mobile | toutes ; ou montant : 249
+#   faire_virement  beneficiaire : le nom tel qu'écrit ; montant : en DH
+#   question_faq    (aucun argument) : frais, plafond en général, délais, bénéficiaires, carte perdue, codes, découvert,
+#                   données, horaires, ce que Wakil sait faire
+#   outil: null     Wakil ne doit appeler aucun outil (hors sujet, politesse)
+#
+# Combien par catégorie (50 en tout) :
+#   solde 4 · plafond 2 · operations 5 · factures 5 · paiement 10 (dont 2 « toutes » et 2 par montant)
+#   virement 8 (dont 2 où il manque le bénéficiaire ou le montant) · faq 7 · floue 3 · hors_sujet 3 · suite 3
+#
+# Un exemple par catégorie (à remplacer par tes phrases) :
+
+- question: "chhal 3ndi f l compte daba ?"
+  ecriture: latin
+  categorie: solde
+  outil: consulter_solde
+  arguments: {}
+
+- question: "شحال هو الماكسيموم اللي نقدر نصيفط؟"
+  ecriture: arabe
+  categorie: plafond
+  outil: consulter_plafond
+  arguments: {}
+
+- question: "bghit nchouf akhir les opérations dyali"
+  ecriture: melange
+  categorie: operations
+  outil: lister_transactions
+  arguments: {}
+
+- question: "wach 3ndi chi factures mazal ?"
+  ecriture: latin
+  categorie: factures
+  outil: lister_factures
+  arguments: {}
+
+- question: "khelless liya l'internet"
+  ecriture: melange
+  categorie: paiement
+  outil: payer_facture
+  arguments: {fournisseur: internet}
+
+- question: "sifet 300 DH l Fatima"
+  ecriture: latin
+  categorie: virement
+  outil: faire_virement
+  arguments: {beneficiaire: Fatima, montant: 300}
+
+- question: "wach kayn chi frais ila sifet l bank khra ?"
+  ecriture: latin
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+# Floue : il manque une information. Wakil appelle l'outil SANS rien inventer ; c'est lui qui demandera le reste.
+- question: "bghit ndir virement"
+  ecriture: latin
+  categorie: floue
+  outil: faire_virement
+  arguments: {}
+
+- question: "chkoun rbe7 l'match dyal lbare7 ?"
+  ecriture: latin
+  categorie: hors_sujet
+  outil: null
+  arguments: {}
+
+# Suite : « avant » donne les messages précédents du client, dans l'ordre.
+- avant: ["chhal bqa f compte dyali ?"]
+  question: "w les factures ?"
+  ecriture: melange
+  categorie: suite
+  outil: lister_factures
+  arguments: {}
+
+
+
+
+- question: "khless liya ka3e li factures"
+  ecriture: melange
+  categorie: operations
+  outil: payer_facture
+  arguments: {}
+
+- question: "3tini les trois derniers operations fl compte dyali"
+  ecriture: melange
+  categorie: transactions
+  outil: lister_transactions
+  arguments: {}
+
+- question: "3tini releve bancaire dyal le mois 10 et l'année 2026"
+  ecriture: melange
+  categorie: pas encore disponible
+  outil: null
+  arguments: {}
+
+- question: "ajouter liya un bénéfiaires fl compte dyal numero de compte 1234567890112341234543642, smiya kamla : Layla Lolila"
+  ecriture: melange
+  categorie: pas encore disponible
+  outil: null
+  arguments: {}

@@ -35,3 +35,32 @@ def test_date_affichee_a_l_heure_du_maroc():
     # Ne jamais écrire « +1 heure » en dur : selon tzdata 2026c, le Maroc est repassé à UTC+0 le 20/09/2026.
     transaction = {"date": "2026-07-09T23:30:00Z", "libelle": "Café", "montant": "-20.00"}
     assert "- 10/07 · Café : -20 DH" in reponses.transactions([transaction])
+
+
+# --- Morceau 15 : plafond, « toutes les factures », facture désignée par son montant ----------------------------------
+
+
+def test_plafond_du_compte():
+    assert reponses.plafond({"plafond_virement": "10000.00"}) == "Plafond dyalek howa 10 000 DH l kol virement."
+
+
+def test_une_facture_a_la_fois_liste_les_factures_et_demande_laquelle():
+    detail = {"code": "une_a_la_fois", "factures": [{"fournisseur": "Eau & Électricité (démo)", "montant": "312.00"},
+                                                    {"fournisseur": "Internet (démo)", "montant": "249.00"}]}  # fmt: skip
+
+    assert reponses.refus("paiement", detail) == (
+        "N9der nkhelless ghir facture wa7da f kol merra. 3ndek :\n"
+        "- Eau & Électricité (démo) : 312 DH\n- Internet (démo) : 249 DH\nChmen wa7da nbda ?"
+    )
+
+
+@pytest.mark.parametrize(
+    ("detail", "attendu"),
+    [
+        ({"montant": "999.00"}, "Ma 3ndek hta facture dyal 999 DH mazal ma tkhelsat."),
+        ({"fournisseur": "Mobile (démo)"}, "Ma 3ndek hta facture dyal Mobile (démo) mazal ma tkhelsat."),
+        ({}, "Ma 3ndek hta facture mazal ma tkhelsat."),
+    ],
+)
+def test_aucune_facture_selon_ce_que_le_client_a_designe(detail, attendu):
+    assert reponses.refus("paiement", {"code": "facture_absente", **detail}) == attendu

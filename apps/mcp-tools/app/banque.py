@@ -37,9 +37,13 @@ def _post(client_id: int, chemin: str, simulation: bool, json: dict | None = Non
     return reponse.json()
 
 
+def compte(client_id: int) -> dict:
+    """Dans la Banque Atlas Démo, chaque client a un seul compte : id, RIB masqué, plafond de virement."""
+    return _get(client_id, f"/clients/{client_id}/comptes")[0]
+
+
 def _compte_principal(client_id: int) -> int:
-    """Dans la Banque Atlas Démo, chaque client a un seul compte."""
-    return _get(client_id, f"/clients/{client_id}/comptes")[0]["id"]
+    return compte(client_id)["id"]
 
 
 def solde(client_id: int) -> dict:

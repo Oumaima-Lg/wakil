@@ -38,6 +38,10 @@ def solde(resultat: dict) -> str:
     return f"Solde dyalek howa {dh(resultat['solde'])}."
 
 
+def plafond(resultat: dict) -> str:
+    return f"Plafond dyalek howa {dh(resultat['plafond_virement'])} l kol virement."
+
+
 def transactions(resultat: list[dict]) -> str:
     lignes = [
         f"- {datetime.fromisoformat(t['date']).astimezone(MAROC):%d/%m} · {t['libelle']} : {dh(t['montant'])}"
@@ -74,6 +78,12 @@ ANNULEE = {"paiement": "Safi, ma tkhelless walou.", "virement": "Safi, ma tsifet
 
 def pas_de_facture(fournisseur: str) -> str:
     return f"Ma 3ndek hta facture dyal {fournisseur} mazal ma tkhelsat."
+
+
+def une_a_la_fois(factures: list[dict]) -> str:
+    """« Khelless kolchi » : une carte de confirmation par facture, alors on demande laquelle d'abord."""
+    lignes = "\n".join(f"- {f['fournisseur']} : {dh(f['montant'])}" for f in factures)
+    return f"N9der nkhelless ghir facture wa7da f kol merra. 3ndek :\n{lignes}\nChmen wa7da nbda ?"
 
 
 def beneficiaire_inconnu(nom: str) -> str:
@@ -119,7 +129,13 @@ def refus(type_operation: str, detail: dict) -> str:
     if code in MANQUES:
         return MANQUES[code]
     if code == "facture_absente":
-        return pas_de_facture(detail["fournisseur"])
+        if "montant" in detail:  # « la facture de 249 DH »
+            return f"Ma 3ndek hta facture dyal {dh(detail['montant'])} mazal ma tkhelsat."
+        if "fournisseur" in detail:
+            return pas_de_facture(detail["fournisseur"])
+        return "Ma 3ndek hta facture mazal ma tkhelsat."
+    if code == "une_a_la_fois":
+        return une_a_la_fois(detail["factures"])
     if code == "beneficiaire_inconnu":
         return beneficiaire_inconnu(detail.get("nom", ""))
     if code == "beneficiaire_ambigu":
