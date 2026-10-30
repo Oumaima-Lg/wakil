@@ -1,0 +1,25 @@
+# Benchmark darija de Wakil, étape 1 : le LLM choisit-il le bon outil, avec les bons paramètres ?
+# Données 100 % fictives. Lancer depuis evals/ (Ollama et les deux serveurs MCP démarrés) : npm run benchmark
+# Voir les réponses une par une : npm run benchmark:voir
+
+description: "Wakil : choix de l'outil et des paramètres, par modèle, en darija"
+
+# La question est donnée telle quelle au fournisseur, qui construit lui-même le vrai prompt de Wakil.
+prompts:
+  - "{{question}}"
+
+providers:
+  - id: file://fournisseur.py
+    label: qwen3:4b-instruct
+    config:
+      modele: qwen3:4b-instruct
+  - id: file://fournisseur.py
+    label: llama3.2:3b
+    config:
+      modele: llama3.2:3b
+
+tests: file://questions.py:creer_tests
+
+evaluateOptions:
+  maxConcurrency: 1 # une question à la fois : sur un PC de 8 Go, Ollama ne garde pas deux modèles en mémoire
+  cache: false # chaque lancement interroge vraiment les modèles

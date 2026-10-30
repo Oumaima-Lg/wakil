@@ -24,6 +24,10 @@
 # Combien par catégorie (50 en tout) :
 #   solde 4 · plafond 2 · operations 5 · factures 5 · paiement 10 (dont 2 « toutes » et 2 par montant)
 #   virement 8 (dont 2 où il manque le bénéficiaire ou le montant) · faq 7 · floue 3 · hors_sujet 3 · suite 3
+#   non_disponible : une demande bancaire que Wakil ne sait pas faire (relevé, chéquier…) ; outil null
+#
+# Une phrase déjà vue (tes conversations annotées, la FAQ) est rangée toute seule dans la « mise au point » par le banc
+# d'essai (evals/benchmark/questions.py) : elle sert à régler Wakil, pas à le noter.
 #
 # Un exemple par catégorie (à remplacer par tes phrases) :
 
@@ -94,25 +98,25 @@
 
 
 - question: "khless liya ka3e li factures"
-  ecriture: melange
-  categorie: operations
+  ecriture: latin
+  categorie: paiement
   outil: payer_facture
-  arguments: {}
+  arguments: {fournisseur: toutes}
 
 - question: "3tini les trois derniers operations fl compte dyali"
   ecriture: melange
-  categorie: transactions
+  categorie: operations
   outil: lister_transactions
   arguments: {}
 
 - question: "3tini releve bancaire dyal le mois 10 et l'année 2026"
   ecriture: melange
-  categorie: pas encore disponible
+  categorie: non_disponible
   outil: null
   arguments: {}
 
 - question: "ajouter liya un bénéfiaires fl compte dyal numero de compte 1234567890112341234543642, smiya kamla : Layla Lolila"
   ecriture: melange
-  categorie: pas encore disponible
-  outil: null
+  categorie: faq
+  outil: question_faq
   arguments: {}

@@ -1,0 +1,12 @@
+{
+  "name": "wakil-evals",
+  "private": true,
+  "description": "Benchmark darija de Wakil (promptfoo). Données 100 % fictives.",
+  "scripts": {
+    "benchmark": "../apps/agent-api/.venv/bin/python benchmark/lancer.py",
+    "benchmark:voir": "PROMPTFOO_DISABLE_TELEMETRY=1 promptfoo view"
+  },
+  "devDependencies": {
+    "promptfoo": "0.125.1"
+  }
+}
