@@ -20,6 +20,8 @@ découvrir les familles d'erreurs. Chaque message est jugé de façon binaire : 
 | `faq-mal-routee` | Une demande sur le compte envoyée à la FAQ, ou une question de FAQ envoyée ailleurs |
 | `faq-mal-servie` | La recherche cite une fiche qui ne répond pas, ou ne trouve rien au-dessus du seuil (0,60) |
 | `donnee-manquante` | Le client demande une donnée de son compte qu'aucun outil ne donne (la valeur de son plafond) |
+| `chiffre-arabizi` | Hypothèse : le LLM comprend mieux « khelless » que « 5lse » (le chiffre 5 pour خ), et pas « ka3e » (tout) |
+| `nombre-non-supporte` | Le client demande un nombre précis d'éléments (« les 3 dernières opérations ») : l'outil en renvoie toujours 5 |
 
 ---
 
@@ -111,4 +113,35 @@ est hors sujet. Restent ouverts : `suite` (mémoire, S2 morceau 5), `pas-encore-
   - aucun outil ne donne la **valeur du plafond** du compte (`donnee-manquante`) ;
   - Wakil ne sait pas répondre « une facture à la fois » à « khelless kolchi » (`operation-multiple`) ;
   - on ne peut pas désigner une facture **par son montant** (`parametre-faux`).
+
+## Conversation 4
+
+- **Date** : 29/10/2026 · **Cliente** : Salma (id 1) · **Testée par** : Oumaima · **Version** : avec le morceau 15 (`consulter_plafond`, fournisseur `toutes`, `montant` facultatif)
+- **Bilan** : 6 ✅ / 15 ❌ sur 21 messages.
+
+| # | Message | Écriture | Attendu | Obtenu | Résultat | Famille |
+|---|---|---|---|---|---|---|
+| 1 | chno homa les factures li 3ndi | latin | `lister_factures` | `lister_factures` | ✅ | |
+| 3 | 5lse liya ka3e les factures | mélange | `payer_facture` (toutes) → une à la fois | `lister_factures` | ❌ | `paiement-vs-liste`, `chiffre-arabizi` |
+| 5 | 5lshome kamline | latin | `payer_facture` (toutes) | FAQ, rien trouvé | ❌ | `faq-mal-routee` |
+| 7 | 5lsse facture dyal 312dh | latin | `payer_facture` (montant 312) | `lister_factures` | ❌ | `paiement-vs-liste` (le LLM n'utilise pas `montant`) |
+| 9 | 5lsse facture dyal 249dh | latin | `payer_facture` (montant 249) | `lister_factures` | ❌ | `paiement-vs-liste` |
+| 11 | 5lse tous les factures | mélange | `payer_facture` (toutes) | `lister_factures` | ❌ | `paiement-vs-liste`, `chiffre-arabizi` |
+| 13 | payer tous les factures | français | `payer_facture` (toutes) | « wa7da b wa7da » + liste | ✅ | |
+| 15 | 5lsse liya tous les factures | mélange | idem | `lister_factures` | ❌ | `chiffre-arabizi` |
+| 17 | 5lsse  tous les factures | mélange | idem | `lister_factures` | ❌ | `chiffre-arabizi` |
+| 19 | 5lse liya tous les factures | mélange | idem | `lister_factures` | ❌ | `chiffre-arabizi` |
+| 21 | 5lse eau | mélange | `payer_facture` (eau) | `lister_factures` | ❌ | `chiffre-arabizi` |
+| 23 | khlsse liya eau | mélange | `payer_facture` (eau) → carte | carte, 312 DH | ✅ | « kh » au lieu de « 5 » |
+| 25 | Non | latin | annulation | « Safi, ma tkhelless walou. » | ✅ | |
+| 27 | khlesse liya tous les factures | mélange | `payer_facture` (toutes) | « wa7da b wa7da » + liste | ✅ | « kh » au lieu de « 5 » |
+| 29 | khless liya k3e li factures | latin | idem | `lister_factures` | ❌ | `chiffre-arabizi` (« k3e » = tout, pas compris) |
+| 31 | khless liya ka3e li factures | latin | idem | `lister_factures` | ❌ | `chiffre-arabizi` |
+| 33 | 3tini les trois derniers operations fl compte dyali | mélange | `lister_transactions`, 3 opérations | les 5 dernières | ❌ | `nombre-non-supporte` (le bon outil, mais toujours 5) |
+| 35 | nn 3tini hir les 3 dernieres | mélange | idem | les 5 dernières | ❌ | `nombre-non-supporte`, `suite` |
+| 37 | 3tini releve bancaire dyal le mois 10 et l'année 2026 | mélange | refus : relevé pas disponible | refus générique | ✅ | refus juste, message générique |
+| 39 | ajouter liya un bénéfiaires fl compte dyal numero de compte 1234567890112341234543642, smiya kamla : Layla Lolila | mélange | FAQ « Bénéficiaires » (on ne peut pas en ajouter) | refus générique | ❌ | `faq-mal-routee` |
+| 41 | hhhhhh | latin | rire : politesse, sans outil | refus | ❌ | `politesse` |
+
+**Piste pour le benchmark** : sur les mêmes demandes, « khlsse liya eau » et « khlesse liya tous les factures » réussissent, alors que « 5lse eau » et « 5lse liya tous les factures » échouent. Une étape qui récrirait les chiffres de l'arabizi avant le LLM (5 → kh, 3 → ع…) serait une variante à mesurer, à côté de la comparaison des modèles.
 

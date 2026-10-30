@@ -19,7 +19,12 @@
 #   faire_virement  beneficiaire : le nom tel qu'écrit ; montant : en DH
 #   question_faq    (aucun argument) : frais, plafond en général, délais, bénéficiaires, carte perdue, codes, découvert,
 #                   données, horaires, ce que Wakil sait faire
+#   lister_beneficiaires (aucun argument) : la liste des bénéficiaires du client et leur nombre (depuis le 30/10)
+#   analyser_depenses    periode : ce_mois | mois_dernier ; categorie : courses | restaurant | cafe | pharmacie | taxi |
+#                        carburant | vetements | retraits | factures | virements (seulement si le client en nomme une)
 #   outil: null     Wakil ne doit appeler aucun outil (hors sujet, politesse)
+#   Plusieurs demandes dans un même message : categorie: plusieurs, et la liste des outils attendus,
+#   outil: [consulter_solde, lister_beneficiaires]
 #
 # Combien par catégorie (50 en tout) :
 #   solde 4 · plafond 2 · operations 5 · factures 5 · paiement 10 (dont 2 « toutes » et 2 par montant)
@@ -120,3 +125,16 @@
   categorie: faq
   outil: question_faq
   arguments: {}
+
+- question: "3tini la liste dyal les bénéficiaires li 3ndi"
+  ecriture: melange
+  categorie: beneficiaires  # non_disponible jusqu'au 30/10 : lister_beneficiaires existe maintenant
+  outil: lister_beneficiaires
+  arguments: {}
+
+- question: "chofe liya solde dyali chhale fihe + la liste dyal beneficiers 3ndi fl compte"
+  ecriture: latin
+  categorie: plusieurs
+  outil: [consulter_solde, lister_beneficiaires]
+  arguments: {}
+

@@ -1,0 +1,115 @@
+# Questions du benchmark darija, écrites par Claude (50) et relues par Oumaima. Données 100 % fictives.
+# Mêmes règles et même format que questions-oumaima.yaml. La cliente est Salma Alaoui (solde 2 350 DH, plafond
+# 10 000 DH, factures Eau & Électricité 312 DH et Internet 249 DH, un seul bénéficiaire : Fatima Lahlou).
+#
+# À relire par Oumaima : la darija (naturelle ?), et ce que Wakil doit faire (outil, arguments).
+# Répartition : solde 4 · plafond 2 · operations 5 · factures 4 · paiement 10 · virement 8 · faq 6 · floue 3
+#               hors_sujet 3 · suite 3 · non_disponible 2
+# Ajoutées le 30/10 (13, à relire par Oumaima) : beneficiaires 3 · depenses 6 · plusieurs 4
+
+# --- Solde ---
+- {question: "شحال عندي فالكونط؟", ecriture: arabe, categorie: solde, outil: consulter_solde, arguments: {}}
+- {question: "chhal fih l compte dyali daba", ecriture: latin, categorie: solde, outil: consulter_solde, arguments: {}}
+- {question: "le solde dyali ch7al wsel ?", ecriture: melange, categorie: solde, outil: consulter_solde, arguments: {}}
+- {question: "Combien il me reste sur mon compte ?", ecriture: francais, categorie: solde, outil: consulter_solde, arguments: {}}
+
+# --- Plafond du compte (la valeur, pas la règle générale) ---
+- {question: "شحال هو البلافون ديال الكونط ديالي؟", ecriture: arabe, categorie: plafond, outil: consulter_plafond, arguments: {}}
+- {question: "mon plafond de virement ch7al ?", ecriture: melange, categorie: plafond, outil: consulter_plafond, arguments: {}}
+
+# --- Opérations ---
+- {question: "ورّيني آخر العمليات اللي دازو فالحساب", ecriture: arabe, categorie: operations, outil: lister_transactions, arguments: {}}
+- {question: "achno drt b lflous f had l'ayam ?", ecriture: latin, categorie: operations, outil: lister_transactions, arguments: {}}
+- {question: "affichili les dernières dépenses dyali", ecriture: melange, categorie: operations, outil: lister_transactions, arguments: {}}
+- {question: "شنو خلصت هاد الأيام؟", ecriture: arabe, categorie: operations, outil: lister_transactions, arguments: {}}
+- {question: "chouf liya l7arakat dyal l compte", ecriture: latin, categorie: operations, outil: lister_transactions, arguments: {}}
+
+# --- Factures (les voir, sans payer) ---
+- {question: "واش عندي شي فاتورة باقا ما تخلصات؟", ecriture: arabe, categorie: factures, outil: lister_factures, arguments: {}}
+- {question: "ach men factures mazal 3liya ?", ecriture: latin, categorie: factures, outil: lister_factures, arguments: {}}
+- {question: "les factures en attente dyali chno homa ?", ecriture: melange, categorie: factures, outil: lister_factures, arguments: {}}
+- {question: "Est-ce que j'ai des factures à payer ?", ecriture: francais, categorie: factures, outil: lister_factures, arguments: {}}
+
+# --- Paiement (dont 2 « toutes » et 2 par montant) ---
+- {question: "خلص ليا فاتورة الضو والما", ecriture: arabe, categorie: paiement, outil: payer_facture, arguments: {fournisseur: eau_electricite}}
+- {question: "khallas liya l internet 3afak", ecriture: latin, categorie: paiement, outil: payer_facture, arguments: {fournisseur: internet}}
+- {question: "règle-lia la facture d'internet", ecriture: melange, categorie: paiement, outil: payer_facture, arguments: {fournisseur: internet}}
+- {question: "بغيت نخلص فاتورة الانترنيت", ecriture: arabe, categorie: paiement, outil: payer_facture, arguments: {fournisseur: internet}}
+- {question: "dir liya paiement dyal facture lma", ecriture: latin, categorie: paiement, outil: payer_facture, arguments: {fournisseur: eau_electricite}}
+- {question: "payi liya la facture dyal l'électricité", ecriture: melange, categorie: paiement, outil: payer_facture, arguments: {fournisseur: eau_electricite}}
+- {question: "khalless ga3 les factures li 3liya", ecriture: melange, categorie: paiement, outil: payer_facture, arguments: {fournisseur: toutes}}
+- {question: "خلص ليا كاع الفواتير", ecriture: arabe, categorie: paiement, outil: payer_facture, arguments: {fournisseur: toutes}}
+- {question: "khallas la facture de 312 DH", ecriture: melange, categorie: paiement, outil: payer_facture, arguments: {montant: 312}}
+- {question: "bghit nkhallas dik l facture dyal 249 dirham", ecriture: latin, categorie: paiement, outil: payer_facture, arguments: {montant: 249}}
+
+# --- Virement (dont 2 où il manque le montant ou le bénéficiaire : rien ne doit être inventé) ---
+# Un nom écrit en lettres arabes doit être recopié tel quel par le LLM (le serveur MCP ne sait pas encore le retrouver).
+- {question: "صيفط لفاطمة 200 درهم", ecriture: arabe, categorie: virement, outil: faire_virement, arguments: {beneficiaire: فاطمة, montant: 200}}
+- {question: "7awel 500 dh l Fatima Lahlou", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima Lahlou, montant: 500}}
+- {question: "fais un virement de 1000 DH l Fatima", ecriture: melange, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima, montant: 1000}}
+- {question: "Envoie 150 dirhams à Fatima", ecriture: francais, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima, montant: 150}}
+- {question: "sift 2000 l Omar", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Omar, montant: 2000}}
+- {question: "حول 300 درهم لفاطمة لحلو", ecriture: arabe, categorie: virement, outil: faire_virement, arguments: {beneficiaire: فاطمة, montant: 300}}
+- {question: "bghit nsifet l Fatima", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima}}
+- {question: "sifet 400 dh", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {montant: 400}}
+
+# --- FAQ ---
+- {question: "شحال كتاخذ البنكة على كل عملية؟", ecriture: arabe, categorie: faq, outil: question_faq, arguments: {}}
+- {question: "wach Wakil kaykhdem nhar l3id ?", ecriture: latin, categorie: faq, outil: question_faq, arguments: {}}
+- {question: "si quelqu'un m'appelle w ytleb code SMS, chno ndir ?", ecriture: melange, categorie: faq, outil: question_faq, arguments: {}}
+- {question: "واش هاد البنك ديال بصح ولا غير تجربة؟", ecriture: arabe, categorie: faq, outil: question_faq, arguments: {}}
+- {question: "ila sifet l chi wa7ed daba, kaywsel f nefs nhar ?", ecriture: latin, categorie: faq, outil: question_faq, arguments: {}}
+- {question: "Est-ce que je peux changer mon plafond de virement ?", ecriture: francais, categorie: faq, outil: question_faq, arguments: {}}
+
+# --- Floue : l'outil, sans rien deviner ; Wakil demandera le reste ---
+- {question: "بغيت نخلص فاتورة", ecriture: arabe, categorie: floue, outil: payer_facture, arguments: {}}
+- {question: "dir liya virement 3afak", ecriture: latin, categorie: floue, outil: faire_virement, arguments: {}}
+- {question: "bghit nkhallas wa7d l facture", ecriture: latin, categorie: floue, outil: payer_facture, arguments: {}}
+
+# --- Hors sujet ---
+- {question: "شنو هي العاصمة ديال اليابان؟", ecriture: arabe, categorie: hors_sujet, outil: null, arguments: {}}
+- {question: "3tini chi nokta", ecriture: latin, categorie: hors_sujet, outil: null, arguments: {}}
+- {question: "écris-moi un email l mudir dyali", ecriture: melange, categorie: hors_sujet, outil: null, arguments: {}}
+
+# --- Suite d'une conversation ---
+- avant: ["شحال عندي فالحساب؟"]
+  question: "و الفواتير؟"
+  ecriture: arabe
+  categorie: suite
+  outil: lister_factures
+  arguments: {}
+- avant: ["sift 200 dh l Fatima"]
+  question: "w 3awed 100 dh l nefs l wa7ed"
+  ecriture: latin
+  categorie: suite
+  outil: faire_virement
+  arguments: {beneficiaire: Fatima, montant: 100}
+- avant: ["achno akhir l'opérations ?"]
+  question: "w chhal b9a liya ?"
+  ecriture: melange
+  categorie: suite
+  outil: consulter_solde
+  arguments: {}
+
+# --- Ce que Wakil ne sait pas faire ---
+- {question: "bghit ncommandi chéquier jdid", ecriture: melange, categorie: non_disponible, outil: null, arguments: {}}
+- {question: "بغيت نبدل كلمة السر ديال التطبيق", ecriture: arabe, categorie: non_disponible, outil: null, arguments: {}}
+
+# --- Bénéficiaires (ajoutées le 30/10) ---
+- {question: "شكون هوما الناس اللي نقدر نصيفط ليهم؟", ecriture: arabe, categorie: beneficiaires, outil: lister_beneficiaires, arguments: {}}
+- {question: "ch7al men bénéficiaire 3ndi ?", ecriture: melange, categorie: beneficiaires, outil: lister_beneficiaires, arguments: {}}
+- {question: "Quels sont mes bénéficiaires ?", ecriture: francais, categorie: beneficiaires, outil: lister_beneficiaires, arguments: {}}
+
+# --- Dépenses : le LLM choisit le mois et la catégorie, la banque calcule (ajoutées le 30/10) ---
+- {question: "chhal srefti had chhar ?", ecriture: latin, categorie: depenses, outil: analyser_depenses, arguments: {periode: ce_mois}}
+- {question: "شحال صرفت الشهر اللي فات؟", ecriture: arabe, categorie: depenses, outil: analyser_depenses, arguments: {periode: mois_dernier}}
+- {question: "ch7al mchat 3liya f restaurant had chhar", ecriture: latin, categorie: depenses, outil: analyser_depenses, arguments: {periode: ce_mois, categorie: restaurant}}
+- {question: "Combien j'ai dépensé en carburant le mois dernier ?", ecriture: francais, categorie: depenses, outil: analyser_depenses, arguments: {periode: mois_dernier, categorie: carburant}}
+- {question: "fin mchaw flousi had chhar ?", ecriture: latin, categorie: depenses, outil: analyser_depenses, arguments: {periode: ce_mois}}
+- {question: "شحال خسرت فالطاكسي هاد الشهر؟", ecriture: arabe, categorie: depenses, outil: analyser_depenses, arguments: {periode: ce_mois, categorie: taxi}}
+
+# --- Plusieurs demandes dans un même message : la liste des outils attendus (ajoutées le 30/10) ---
+- {question: "chofli solde w les factures li mazal", ecriture: melange, categorie: plusieurs, outil: [consulter_solde, lister_factures], arguments: {}}
+- {question: "شحال عندي فالحساب و شنو هي آخر العمليات؟", ecriture: arabe, categorie: plusieurs, outil: [consulter_solde, lister_transactions], arguments: {}}
+- {question: "3tini le solde w le plafond dyal virement", ecriture: melange, categorie: plusieurs, outil: [consulter_solde, consulter_plafond], arguments: {}}
+- {question: "Mon solde et mes factures impayées, s'il te plaît", ecriture: francais, categorie: plusieurs, outil: [consulter_solde, lister_factures], arguments: {}}
