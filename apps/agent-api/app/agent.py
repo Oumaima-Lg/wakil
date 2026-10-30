@@ -21,7 +21,8 @@ from app import outils, reponses
 SYSTEME = (
     "Tu es Wakil, l'assistant de la Banque Atlas Démo (banque fictive). "
     "Le client écrit en darija marocaine, en lettres arabes ou latines, souvent mélangée au français. "
-    "Si la demande concerne son compte, appelle l'outil adapté. "
+    "Si la demande concerne son compte, appelle l'outil adapté ; s'il demande plusieurs choses sur son compte, "
+    "appelle un outil pour chacune. "
     "Pour payer une facture ou faire un virement, appelle l'outil avec ses paramètres : le client confirmera "
     "toujours avant que la banque n'exécute quoi que ce soit. N'invente jamais un montant ni un bénéficiaire. "
     "Pour une question générale sur la banque ou sur toi (frais, plafond, délais, bénéficiaires, carte perdue, codes, "
@@ -32,24 +33,29 @@ SYSTEME = (
 
 def lire(nom: str, cle: str | None = None):
     """Fabrique la lecture d'un outil du serveur MCP : une fonction qui garde nom et cle, et n'attend plus que le
-    client. cle : la liste est rangée sous ce nom (« transactions », « factures »)."""
+    client et les paramètres choisis par le LLM (le mois des dépenses). cle : la liste est rangée sous ce nom
+    (« transactions », « factures »)."""
 
-    def lecture(client_id: int):
-        donnees = outils.appeler(client_id, nom, {})
+    def lecture(client_id: int, arguments: dict | None = None):
+        donnees = outils.appeler(client_id, nom, arguments or {})
         return donnees[cle] if cle else donnees
 
     return lecture
 
 
 # Liste fermée : le LLM ne peut choisir que parmi ces outils, dont le serveur MCP donne la description et le schéma.
-# Les trois premiers lisent ; les deux derniers déplacent de l'argent, donc passent par la carte de confirmation.
+# OUTILS lisent ; OPERATIONS déplacent de l'argent, donc passent par la carte de confirmation.
+# Pour les dépenses, le LLM choisit seulement le mois et la catégorie : les totaux sont calculés par la banque.
 OUTILS = {
     "consulter_solde": (lire("consulter_solde"), reponses.solde),
     "consulter_plafond": (lire("consulter_plafond"), reponses.plafond),
     "lister_transactions": (lire("lister_transactions", "transactions"), reponses.transactions),
     "lister_factures": (lire("lister_factures", "factures"), reponses.factures),
+    "lister_beneficiaires": (lire("lister_beneficiaires"), reponses.beneficiaires),
+    "analyser_depenses": (lire("analyser_depenses"), reponses.depenses),
 }
 OPERATIONS = {"payer_facture": "paiement", "faire_virement": "virement"}
+LECTURES_MAX = 3  # « le solde, les factures w les bénéficiaires » : au plus 3 lectures pour un même message
 # La FAQ : l'outil du serveur MCP de la FAQ (apps/rag-faq), qui retrouve la fiche qui répond. Son paramètre est rempli
 # par l'application avec la phrase du client, jamais par le LLM (voir outils.REMPLIS_PAR_L_APPLICATION).
 OUTIL_FAQ = "question_faq"
@@ -92,6 +98,7 @@ class Etat(TypedDict, total=False):
     demande: str
     outil: str | None
     arguments: dict  # les paramètres choisis par le LLM (fournisseur, bénéficiaire, montant)
+    lectures: list[dict]  # les lectures qui restent à faire pour ce message : {"outil", "arguments"}
     resultat: dict | list | None
     operation: dict | None  # l'opération vérifiée à blanc, qui attend la réponse du client
     confirmation: Literal["oui", "non"] | None
@@ -113,6 +120,7 @@ def nouveau_tour(demande: str, client_id: int, facture_id: int | None = None) ->
         "demande": demande,
         "outil": None,
         "arguments": {},
+        "lectures": [],
         "resultat": None,
         "operation": None,
         "confirmation": None,
@@ -210,15 +218,32 @@ def remercier(etat: Etat) -> dict:
     return dire(reponses.POLITESSE)
 
 
+def choisir(appels: list[dict]) -> dict:
+    """Ce que Wakil fait des appels d'outils du LLM. Des règles fixes, lues par le code :
+    - une opération parmi les appels : la première, seule (une carte de confirmation à la fois) ;
+    - sinon, les lectures du compte, dans l'ordre, sans doublon, au plus LECTURES_MAX ;
+    - sinon, la FAQ.
+    Un nom d'outil inventé par le LLM est ignoré : s'il ne reste rien, c'est « aucun outil ».
+    """
+    connus = [{"outil": a["name"], "arguments": a.get("args") or {}} for a in appels
+              if a["name"] in {*OUTILS, *OPERATIONS, OUTIL_FAQ}]  # fmt: skip
+    operation = next((a for a in connus if a["outil"] in OPERATIONS), None)
+    lectures = []
+    for appel in connus:
+        if appel["outil"] in OUTILS and appel not in lectures:
+            lectures.append(appel)
+    if operation is None and lectures:
+        lectures = lectures[:LECTURES_MAX]
+        return {"outil": lectures[0]["outil"], "arguments": lectures[0]["arguments"], "lectures": lectures}
+    choisi = operation or next((a for a in connus if a["outil"] == OUTIL_FAQ), None)
+    return {**(choisi or {"outil": None, "arguments": {}}), "lectures": []}
+
+
 def comprendre(etat: Etat) -> dict:
-    """Le LLM lit la demande, avec la conversation récente pour le contexte (voir pour_le_llm), et choisit un outil
-    (et ses paramètres) ou aucun."""
+    """Le LLM lit la demande, avec la conversation récente pour le contexte (voir pour_le_llm), et choisit un ou
+    plusieurs outils (et leurs paramètres), ou aucun."""
     message = le_llm().invoke([SystemMessage(SYSTEME), *pour_le_llm(etat["messages"])])
-    appel = message.tool_calls[0] if message.tool_calls else None
-    # Un nom d'outil inventé par le LLM est traité comme « aucun outil ».
-    if appel is None or appel["name"] not in {*OUTILS, *OPERATIONS, OUTIL_FAQ}:
-        return {"outil": None}
-    return {"outil": appel["name"], "arguments": appel.get("args") or {}}
+    return choisir(message.tool_calls)
 
 
 def apres_comprendre(etat: Etat) -> Literal["executer_outil", "preparer_operation", "repondre_faq", "refuser"]:
@@ -230,20 +255,27 @@ def apres_comprendre(etat: Etat) -> Literal["executer_outil", "preparer_operatio
 
 
 def executer_outil(etat: Etat) -> dict:
-    """Le code appelle l'outil (serveur MCP) pour le client de la session."""
-    lecture, _ = OUTILS[etat["outil"]]
+    """Le code appelle la prochaine lecture (serveur MCP) pour le client de la session."""
+    suivante, *reste = etat["lectures"]
+    lecture, _ = OUTILS[suivante["outil"]]
+    faite = {**suivante, "lectures": reste}  # outil et arguments de cette lecture-ci, pour repondre et pour le front
     try:
-        return {"resultat": lecture(etat["client_id"])}
+        return {**faite, "resultat": lecture(etat["client_id"], suivante["arguments"]), "erreur": False}
     except outils.OutilsIndisponibles:
-        return {"erreur": True}
+        return {**faite, "resultat": None, "erreur": True}
 
 
 def repondre(etat: Etat) -> dict:
-    """Le code met le résultat de la banque en phrase."""
+    """Le code met le résultat de la banque en phrase : une réponse par lecture."""
     if etat.get("erreur"):
         return dire(reponses.ERREUR, etat["outil"])
     _, formuler = OUTILS[etat["outil"]]
     return dire(formuler(etat["resultat"]), etat["outil"])
+
+
+def apres_repondre(etat: Etat) -> Literal["executer_outil", "__end__"]:
+    """La lecture suivante, s'il en reste ; une banque en panne arrête tout (inutile de répéter l'erreur)."""
+    return "executer_outil" if etat.get("lectures") and not etat.get("erreur") else END
 
 
 def refuser(etat: Etat) -> dict:
@@ -359,9 +391,10 @@ graphe.add_node("annuler", annuler)
 graphe.add_conditional_edges(START, avant_comprendre)
 graphe.add_conditional_edges("comprendre", apres_comprendre)
 graphe.add_edge("executer_outil", "repondre")
+graphe.add_conditional_edges("repondre", apres_repondre)
 graphe.add_conditional_edges("preparer_operation", apres_preparation)
 graphe.add_conditional_edges("demander_confirmation", apres_confirmation)
-for fin in ("saluer", "remercier", "repondre", "refuser", "repondre_faq", "executer_operation", "annuler"):
+for fin in ("saluer", "remercier", "refuser", "repondre_faq", "executer_operation", "annuler"):
     graphe.add_edge(fin, END)
 
 

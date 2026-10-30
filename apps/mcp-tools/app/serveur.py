@@ -23,7 +23,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from app import banque, operations
+from app import analyse, banque, operations
 
 serveur = MCPServer(
     "banque-atlas-demo",
@@ -74,6 +74,35 @@ def lister_transactions(ctx: Context) -> dict[str, Any]:
 def lister_factures(ctx: Context) -> dict[str, Any]:
     """Montre les factures impayées du client, sans rien payer."""
     return {"factures": banque.factures_impayees(client_de(ctx))}
+
+
+@serveur.tool(title="Bénéficiaires", annotations=LECTURE, structured_output=True)
+def lister_beneficiaires(ctx: Context) -> dict[str, Any]:
+    """Liste les bénéficiaires enregistrés par le client (les personnes à qui il peut faire un virement), avec leur
+    nombre."""
+    liste = [{"nom": b["nom"], "rib_masque": b["rib_masque"]} for b in banque.beneficiaires(client_de(ctx))]
+    return {"beneficiaires": liste, "nombre": len(liste)}
+
+
+@serveur.tool(title="Analyser les dépenses", annotations=LECTURE, structured_output=True)
+def analyser_depenses(
+    ctx: Context,
+    periode: Annotated[
+        analyse.Periode,
+        Field(description="ce_mois (le mois en cours, par défaut) ou mois_dernier (le mois précédent)."),
+    ] = "ce_mois",
+    categorie: Annotated[
+        analyse.Categorie | None,
+        Field(
+            description="Seulement si le client nomme une catégorie : courses, restaurant, cafe, pharmacie, taxi, "
+            "carburant, vetements, retraits (au guichet), factures, virements (envoyés)."
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Calcule combien le client a dépensé et reçu sur un mois, en tout ou dans une catégorie, avec ses plus grosses
+    dépenses. En darija, le client dit « chhal srefti », « fin mchaw flousi » ou « شحال صرفت ». Les totaux sont
+    calculés par la banque."""
+    return analyse.depenses(client_de(ctx), periode, categorie)
 
 
 @serveur.tool(title="Payer une facture", annotations=OPERATION, structured_output=True)

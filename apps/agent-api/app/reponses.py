@@ -1,6 +1,6 @@
 """Les phrases de Wakil. Les montants viennent de la banque et sont écrits par ce code, jamais par le LLM."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -10,8 +10,8 @@ SALUT = "Wa 3alikom salam ! Ana Wakil, l'assistant dyal Banque Atlas Démo. Kifa
 POLITESSE = "Bla jmil ! Ila bghiti chi haja okhra, ana hna."
 # Neutre : convient au hors-sujet et à l'incompris. La liste dit tout ce que Wakil sait faire.
 REFUS = (
-    "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations, les factures, "
-    "l'virement, w les questions 3la la banque."
+    "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations, chhal srefti, "
+    "les factures, les bénéficiaires, l'virement, w les questions 3la la banque."
 )
 ERREUR = "Smeh lia, kayn mochkil f la banque daba. 3awed men ba3d."
 PANNE = "Smeh lia, Wakil ma khdamch daba. 3awed men ba3d."  # panne de l'agent lui-même (LLM injoignable…)
@@ -58,6 +58,49 @@ def factures(resultat: list[dict]) -> str:
         return "3ndek facture wa7da mazal ma tkhelsat :\n" + lignes[0]
     total = sum(Decimal(f["montant"]) for f in resultat)
     return f"3ndek {len(resultat)} factures mazal ma tkhelsou ({dh(total)} f lmjmou3) :\n" + "\n".join(lignes)
+
+
+def beneficiaires(resultat: dict) -> str:
+    """Le nombre vient du serveur MCP, qui a compté la liste de la banque : le LLM ne compte jamais."""
+    liste, nombre = resultat["beneficiaires"], resultat["nombre"]
+    if nombre == 0:
+        return "Ma 3ndek hta bénéficiaire."
+    lignes = "\n".join(f"- {b['nom']} ({b['rib_masque']})" for b in liste)
+    if nombre == 1:
+        return f"3ndek bénéficiaire wa7ed :\n{lignes}"
+    return f"3ndek {nombre} bénéficiaires :\n{lignes}"
+
+
+MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre",
+        "décembre"]  # fmt: skip
+
+
+def _operations(nombre: int) -> str:
+    return "opération wa7da" if nombre == 1 else f"{nombre} d l'opérations"
+
+
+def depenses(resultat: dict) -> str:
+    """Les totaux sont calculés par la banque sur toutes les opérations du mois ; ce code ne fait que les écrire."""
+    mois = MOIS[date.fromisoformat(resultat["du"]).month - 1]
+    quand = f"had chhar ({mois})" if resultat["periode"] == "ce_mois" else f"chhar li fat ({mois})"
+    debut = quand[0].upper() + quand[1:]
+    if categorie := resultat.get("categorie"):
+        if categorie["nombre"] == 0:
+            return f"Ma srefti walou f {categorie['nom']} {quand}."
+        return f"{debut}, srefti {dh(categorie['total'])} f {categorie['nom']} ({_operations(categorie['nombre'])})."
+    if resultat["nombre"] == 0:
+        return f"Ma kayna hta opération {quand}."
+    lignes = [
+        f"{debut} : srefti {dh(resultat['depenses'])} w dkhel lik {dh(resultat['entrees'])} "
+        f"({_operations(resultat['nombre'])})."
+    ]
+    if resultat["par_categorie"]:
+        lignes.append("Fin srefti ktar :")
+        lignes += [f"- {c['nom']} : {dh(c['total'])}" for c in resultat["par_categorie"][:3]]
+    if grosse := resultat.get("plus_grosse"):
+        jour = datetime.fromisoformat(grosse["date"]).astimezone(MAROC)
+        lignes.append(f"Akbar masrouf : {grosse['libelle']}, {dh(-Decimal(grosse['montant']))} ({jour:%d/%m}).")
+    return "\n".join(lignes)
 
 
 # Opérations (paiement, virement). Wakil parle de ce qu'il fait lui-même (nkhelless, nsifet) : la phrase est la même

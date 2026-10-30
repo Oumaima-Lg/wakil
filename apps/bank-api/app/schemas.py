@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -37,6 +37,25 @@ class Transaction(BaseModel):
     date: datetime
     montant: Decimal  # négatif : sortie d'argent, positif : entrée
     libelle: str
+
+
+class DepensesCategorie(BaseModel):
+    categorie: str  # code : « restaurant », « factures »…
+    nom: str  # nom affiché : « Restaurant », « Factures »…
+    total: Decimal  # positif : l'argent sorti dans cette catégorie
+    nombre: int
+
+
+class Depenses(BaseModel):
+    """Ce qui est entré et sorti d'un compte sur une période, calculé par la banque sur toutes ses opérations."""
+
+    du: date
+    au: date
+    depenses: Decimal  # total des sorties, positif
+    entrees: Decimal
+    nombre: int  # nombre d'opérations (sorties et entrées)
+    par_categorie: list[DepensesCategorie]  # les sorties, de la plus grosse catégorie à la plus petite
+    plus_grosse: Transaction | None  # la plus grosse sortie
 
 
 class Facture(BaseModel):

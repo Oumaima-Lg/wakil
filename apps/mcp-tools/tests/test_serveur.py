@@ -1,8 +1,11 @@
 """Tests du serveur MCP, en HTTP, avec le client MCP officiel (comme agent-api)."""
 
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+
+from app import analyse
 
 
 def resultat(appel):
@@ -13,18 +16,15 @@ def resultat(appel):
 # --- Ce que le serveur annonce ------------------------------------------------------------------------------------
 
 
-def test_le_serveur_annonce_ses_six_outils_et_ce_qu_ils_font(mcp):
+LECTURES = ["analyser_depenses", "consulter_plafond", "consulter_solde", "lister_beneficiaires", "lister_factures",
+            "lister_transactions"]  # fmt: skip
+
+
+def test_le_serveur_annonce_ses_huit_outils_et_ce_qu_ils_font(mcp):
     outils = {o.name: o for o in mcp.lister()}
 
-    assert sorted(outils) == [
-        "consulter_plafond",
-        "consulter_solde",
-        "faire_virement",
-        "lister_factures",
-        "lister_transactions",
-        "payer_facture",
-    ]
-    for lecture in ("consulter_solde", "consulter_plafond", "lister_transactions", "lister_factures"):
+    assert sorted(outils) == sorted([*LECTURES, "faire_virement", "payer_facture"])
+    for lecture in LECTURES:
         assert outils[lecture].annotations.read_only_hint is True
     for operation in ("payer_facture", "faire_virement"):
         assert (
@@ -53,6 +53,51 @@ def test_sans_en_tete_le_serveur_refuse(mcp, fausse_banque):
 def test_les_listes_sont_rangees_sous_un_nom(mcp):
     assert resultat(mcp("lister_transactions"))["transactions"][0]["libelle"] == "Café"
     assert [f["id"] for f in resultat(mcp("lister_factures"))["factures"]] == [1, 2]
+
+
+def test_les_beneficiaires_et_leur_nombre_sans_identifiant(mcp):
+    assert resultat(mcp("lister_beneficiaires")) == {
+        "beneficiaires": [{"nom": "Fatima Lahlou", "rib_masque": "•••• 8633"},
+                          {"nom": "Omar Benali", "rib_masque": "•••• 1120"}],
+        "nombre": 2,
+    }  # fmt: skip
+    assert resultat(mcp("lister_beneficiaires", client_id=2)) == {"beneficiaires": [], "nombre": 0}
+
+
+def test_les_depenses_sont_calculees_par_la_banque(mcp, fausse_banque):
+    depenses = resultat(mcp("analyser_depenses", {"periode": "mois_dernier"}))
+
+    ((_, client, du, au),) = fausse_banque.appels
+    # tout un mois : du 1er au dernier jour
+    assert (
+        client == 1 and du.day == 1 and (au.year, au.month) == (du.year, du.month) and (au + timedelta(days=1)).day == 1
+    )
+    assert depenses["periode"] == "mois_dernier" and depenses["depenses"] == "512.50" and depenses["categorie"] is None
+
+
+@pytest.mark.parametrize(
+    ("categorie", "ligne"),
+    [("restaurant", {"categorie": "restaurant", "nom": "Restaurant", "total": "200.50", "nombre": 2}),
+     ("taxi", {"categorie": "taxi", "nom": "Taxi", "total": "0.00", "nombre": 0})],
+)  # fmt: skip
+def test_les_depenses_d_une_categorie_meme_vide(mcp, categorie, ligne):
+    assert resultat(mcp("analyser_depenses", {"categorie": categorie}))["categorie"] == ligne
+
+
+def test_une_categorie_hors_de_la_liste_est_refusee(mcp, fausse_banque):
+    assert mcp("analyser_depenses", {"categorie": "voyages"}).is_error
+    assert fausse_banque.appels == []
+
+
+@pytest.mark.parametrize(
+    ("periode", "aujourd_hui", "attendu"),
+    [("ce_mois", date(2026, 10, 30), (date(2026, 10, 1), date(2026, 10, 30))),
+     ("mois_dernier", date(2026, 10, 30), (date(2026, 9, 1), date(2026, 9, 30))),
+     ("mois_dernier", date(2026, 3, 1), (date(2026, 2, 1), date(2026, 2, 28))),
+     ("mois_dernier", date(2026, 1, 15), (date(2025, 12, 1), date(2025, 12, 31)))],
+)  # fmt: skip
+def test_les_dates_d_un_mois(periode, aujourd_hui, attendu):
+    assert analyse.dates(periode, aujourd_hui) == attendu
 
 
 # --- Rien ne bouge sans la confirmation du client -----------------------------------------------------------------

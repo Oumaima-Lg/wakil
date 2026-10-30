@@ -87,7 +87,7 @@ def test_jeton_sans_expiration_refuse(api):
 def test_l_en_tete_x_client_id_est_ignore(salma, faux_llm, monkeypatch):
     clients_appeles = []
 
-    def fausse_banque(client_id):
+    def fausse_banque(client_id, arguments=None):
         clients_appeles.append(client_id)
         return {"solde": "2350.00"}
 

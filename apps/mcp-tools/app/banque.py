@@ -2,6 +2,7 @@
 choisi par le LLM."""
 
 import os
+from datetime import date
 from decimal import Decimal
 
 import httpx
@@ -60,6 +61,11 @@ def factures_impayees(client_id: int) -> list[dict]:
 
 def beneficiaires(client_id: int) -> list[dict]:
     return _get(client_id, f"/clients/{client_id}/beneficiaires")
+
+
+def depenses(client_id: int, du: date, au: date) -> dict:
+    """Entrées, sorties et sorties par catégorie entre deux dates incluses, calculées par la banque."""
+    return _get(client_id, f"/comptes/{_compte_principal(client_id)}/depenses", du=du.isoformat(), au=au.isoformat())
 
 
 # Opérations. simulation=True : vérification à blanc, la banque vérifie et calcule tout puis annule.

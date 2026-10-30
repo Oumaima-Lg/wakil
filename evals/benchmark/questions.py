@@ -7,7 +7,9 @@ Deux paquets :
   (data/benchmark/annotations.md) ou dans les questions types de la FAQ (data/faq/faq.yaml).
 """
 
+import json
 import re
+import sys
 import unicodedata
 from pathlib import Path
 
@@ -15,9 +17,17 @@ import yaml
 
 RACINE = Path(__file__).resolve().parents[2]
 CATEGORIES = {"solde", "plafond", "operations", "factures", "paiement", "virement", "faq", "floue", "hors_sujet",
-              "suite", "non_disponible"}  # fmt: skip
-OUTILS = {"consulter_solde", "consulter_plafond", "lister_transactions", "lister_factures", "payer_facture",
-          "faire_virement", "question_faq", None}  # fmt: skip
+              "suite", "non_disponible", "beneficiaires", "depenses", "plusieurs"}  # fmt: skip
+OUTILS = {"consulter_solde", "consulter_plafond", "lister_transactions", "lister_factures", "lister_beneficiaires",
+          "analyser_depenses", "payer_facture", "faire_virement", "question_faq", None}  # fmt: skip
+AUCUN = "aucun"  # « aucun outil » : promptfoo refuse une variable null
+
+
+def en_texte(liste: list) -> str:
+    """Une liste passée à promptfoo en texte JSON : une variable qui contient une liste deviendrait un test par élément."""
+    return json.dumps(liste, ensure_ascii=False)
+
+
 CATEGORIE_DE_L_OUTIL = {"consulter_solde": "solde", "lister_transactions": "operations", "lister_factures": "factures",
                         "payer_facture": "paiement", "faire_virement": "virement"}  # fmt: skip
 
@@ -64,15 +74,19 @@ def creer_tests(config: dict | None = None) -> list[dict]:
 
     tests = []
     for q in questions:
-        assert q["categorie"] in CATEGORIES, f"Catégorie inconnue « {q['categorie']} » : {q['question']}"
-        assert q.get("outil") in OUTILS, f"Outil inconnu « {q.get('outil')} » : {q['question']}"
+        # Une question qu'on ne sait pas encore noter (catégorie ou outil inconnus) est mise de côté, et signalée.
+        # Plusieurs demandes dans un même message : la liste des outils attendus.
+        attendus = q.get("outil") if isinstance(q.get("outil"), list) else [q.get("outil")]
+        if q["categorie"] not in CATEGORIES or not set(attendus) <= OUTILS:
+            print(f"Question mise de côté ({q['categorie']} / {q.get('outil')}) : {q['question']}", file=sys.stderr)
+            continue
         paquet = "mise_au_point" if q["source"] == "evals/faq" or simplifier(q["question"]) in vues else "test"
         variables = {
             "question": q["question"],
-            "avant": q.get("avant") or [],
+            "avant": en_texte(q.get("avant") or []),
             "categorie": q["categorie"],
             "ecriture": q["ecriture"],
-            "outil": q.get("outil"),
+            "outil": en_texte(attendus) if isinstance(q.get("outil"), list) else q.get("outil") or AUCUN,
             "arguments": q.get("arguments") or {},
             "paquet": paquet,
             "source": q["source"],

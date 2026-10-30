@@ -29,6 +29,8 @@ SERVEUR_DE = {
             "consulter_plafond",
             "lister_transactions",
             "lister_factures",
+            "lister_beneficiaires",
+            "analyser_depenses",
             "payer_facture",
             "faire_virement",
         ],
@@ -40,8 +42,9 @@ SERVEUR_DE = {
 # avec la phrase du client, jamais avec une reformulation du LLM.
 REMPLIS_PAR_L_APPLICATION = {"question_faq": {"question"}}
 # Les paramètres que le LLM peut laisser vides : tous les autres lui sont présentés comme obligatoires, sinon un petit
-# modèle les oublie. Le montant d'une facture ne sert que si le client la désigne ainsi (« la facture de 249 DH »).
-OPTIONNELS_POUR_LE_LLM = {"payer_facture": {"montant"}}
+# modèle les oublie. Le montant d'une facture ne sert que si le client la désigne ainsi (« la facture de 249 DH ») ;
+# la catégorie des dépenses, que s'il en nomme une (« chhal srefti f restaurant »).
+OPTIONNELS_POUR_LE_LLM = {"payer_facture": {"montant"}, "analyser_depenses": {"categorie"}}
 
 journal = logging.getLogger(__name__)
 

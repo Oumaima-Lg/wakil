@@ -13,14 +13,16 @@ from tests.sse import evenements
 
 def test_chat_envoie_les_etapes_puis_la_reponse(salma, faux_llm, monkeypatch):
     faux_llm("consulter_solde")
-    monkeypatch.setitem(agent.OUTILS, "consulter_solde", (lambda client_id: {"solde": "2350.00"}, reponses.solde))
+    monkeypatch.setitem(
+        agent.OUTILS, "consulter_solde", (lambda client_id, arguments: {"solde": "2350.00"}, reponses.solde)
+    )
 
     reponse = salma.post("/chat", json={"conversation_id": str(uuid.uuid4()), "texte": "chhal bqa f compte dyali ?"})
 
     assert reponse.headers["content-type"].startswith("text/event-stream")
     assert evenements(reponse) == [
         ("etape", {"noeud": "comprendre", "outil": "consulter_solde"}),
-        ("etape", {"noeud": "executer_outil", "outil": None}),  # le résultat brut de la banque ne part pas ici…
+        ("etape", {"noeud": "executer_outil", "outil": "consulter_solde"}),  # les données de la banque, pas ici…
         (  # … mais seulement avec la réponse, pour que le front affiche le solde en grand
             "reponse",
             {
@@ -55,6 +57,22 @@ def test_une_reponse_de_la_faq_porte_la_fiche_citee(salma, faux_llm, monkeypatch
     )
 
 
+def test_deux_lectures_donnent_deux_reponses_chacune_avec_ses_donnees(salma, faux_llm, monkeypatch):
+    faux_llm(["consulter_solde", "lister_beneficiaires"])
+    monkeypatch.setitem(
+        agent.OUTILS, "consulter_solde", (lambda client_id, arguments: {"solde": "2350.00"}, reponses.solde)
+    )
+    beneficiaires = {"beneficiaires": [{"nom": "Fatima Lahlou", "rib_masque": "•••• 8633"}], "nombre": 1}
+    monkeypatch.setitem(
+        agent.OUTILS, "lister_beneficiaires", (lambda client_id, arguments: beneficiaires, reponses.beneficiaires)
+    )
+
+    reponse = salma.post("/chat", json={"conversation_id": str(uuid.uuid4()), "texte": "solde w les bénéficiaires"})
+
+    reponses_envoyees = [(d["outil"], d["donnees"]) for nom, d in evenements(reponse) if nom == "reponse"]
+    assert reponses_envoyees == [("consulter_solde", {"solde": "2350.00"}), ("lister_beneficiaires", beneficiaires)]
+
+
 def test_un_salut_repond_sans_outil_ni_donnees(salma, faux_llm):
     faux_llm()
 
@@ -69,7 +87,7 @@ def test_un_salut_repond_sans_outil_ni_donnees(salma, faux_llm):
 def test_banque_injoignable_la_reponse_le_signale(salma, faux_llm, monkeypatch):
     faux_llm("consulter_solde")
 
-    def banque_en_panne(client_id):
+    def banque_en_panne(client_id, arguments):
         raise outils.OutilsIndisponibles("le serveur MCP ne répond pas")
 
     monkeypatch.setitem(agent.OUTILS, "consulter_solde", (banque_en_panne, reponses.solde))
@@ -105,7 +123,9 @@ def test_un_llm_lent_ne_laisse_pas_la_connexion_muette(salma, monkeypatch):
 
     monkeypatch.setattr(agent, "llm", LLMLent())
     monkeypatch.setattr(main, "BATTEMENT", 0.05)  # 50 ms au lieu de 10 s, pour que le test reste rapide
-    monkeypatch.setitem(agent.OUTILS, "consulter_solde", (lambda client_id: {"solde": "2350.00"}, reponses.solde))
+    monkeypatch.setitem(
+        agent.OUTILS, "consulter_solde", (lambda client_id, arguments: {"solde": "2350.00"}, reponses.solde)
+    )
 
     reponse = salma.post("/chat", json={"conversation_id": str(uuid.uuid4()), "texte": "chhal f compte dyali ?"})
 

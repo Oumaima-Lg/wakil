@@ -44,7 +44,8 @@ def connecter():
 
 
 class FauxLLM:
-    """Doublure du LLM : choisit toujours le même outil (avec ses paramètres) et garde les messages reçus."""
+    """Doublure du LLM : choisit toujours le même outil (avec ses paramètres), ou plusieurs (une liste de noms), et
+    garde les messages reçus."""
 
     def __init__(self, outil=None, arguments=None):
         self.outil = outil
@@ -57,7 +58,8 @@ class FauxLLM:
 
     def invoke(self, messages):
         self.recus.append(messages)
-        appels_outil = [{"name": self.outil, "args": self.arguments, "id": "1"}] if self.outil else []
+        noms = self.outil if isinstance(self.outil, list) else [self.outil] if self.outil else []
+        appels_outil = [{"name": nom, "args": self.arguments, "id": str(i)} for i, nom in enumerate(noms)]
         return AIMessage(content="", tool_calls=appels_outil)
 
 

@@ -8,6 +8,7 @@ Pour une question de suite, les messages d'avant passent d'abord par le même LL
 outils qu'il a vraiment choisis, comme dans une conversation réelle.
 """
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -20,7 +21,6 @@ from langchain_ollama import ChatOllama  # noqa: E402
 
 from app import agent, outils  # noqa: E402
 
-CONNUS = {*agent.OUTILS, *agent.OPERATIONS, agent.OUTIL_FAQ}
 _llms: dict[str, object] = {}  # un LLM par modèle, créé une fois par processus
 
 
@@ -31,14 +31,17 @@ def _llm(modele: str):
     return _llms[modele]
 
 
-def _choisir(llm, messages) -> tuple[dict | None, dict]:
-    """L'outil choisi (comme la case « comprendre » : un nom inconnu vaut « aucun »), et les jetons utilisés."""
+def _choisir(llm, messages) -> tuple[dict, dict]:
+    """Ce que Wakil fait des appels du LLM, avec les mêmes règles que la case « comprendre » (agent.choisir : un nom
+    inconnu est ignoré, une opération passe seule, jusqu'à 3 lectures), et les jetons utilisés.
+
+    outils : tous les outils que Wakil va appeler pour ce message (plusieurs lectures, ou un seul outil)."""
     reponse = llm.invoke([SystemMessage(agent.SYSTEME), *agent.pour_le_llm(messages)])
-    jetons = reponse.usage_metadata or {}
-    appel = reponse.tool_calls[0] if reponse.tool_calls else None
-    if appel is None or appel["name"] not in CONNUS:
-        return None, jetons
-    return {"outil": appel["name"], "arguments": appel.get("args") or {}}, jetons
+    choix = agent.choisir(reponse.tool_calls)
+    outils_appeles = [lecture["outil"] for lecture in choix["lectures"]] or ([choix["outil"]] if choix["outil"] else [])
+    return {"outil": choix["outil"], "arguments": choix["arguments"], "outils": outils_appeles}, (
+        reponse.usage_metadata or {}
+    )
 
 
 def call_api(prompt: str, options: dict, context: dict) -> dict:
@@ -47,15 +50,17 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:
     llm = _llm(modele)
     debut = time.perf_counter()
     messages = []
-    for precedent in variables.get("avant") or []:
+    for precedent in json.loads(variables.get("avant") or "[]"):  # en texte JSON (voir questions.en_texte)
         messages.append(HumanMessage(precedent))
         choix, _ = _choisir(llm, messages)
-        # Comme dire() dans agent.py : la réponse retient l'outil choisi, seul ce que le LLM relira.
-        messages.append(AIMessage("…", additional_kwargs={"outil": choix["outil"]} if choix else {}))
+        # Comme dire() dans agent.py : chaque réponse retient l'outil choisi, seul ce que le LLM relira.
+        messages += [AIMessage("…", additional_kwargs={"outil": outil}) for outil in choix["outils"]] or [
+            AIMessage("…")
+        ]
     messages.append(HumanMessage(variables["question"]))
     choix, jetons = _choisir(llm, messages)
     return {
-        "output": choix or {"outil": None, "arguments": {}},
+        "output": choix,
         "latencyMs": round(1000 * (time.perf_counter() - debut)),
         "tokenUsage": {
             "prompt": jetons.get("input_tokens", 0),

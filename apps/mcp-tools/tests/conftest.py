@@ -56,6 +56,14 @@ class FausseBanque:
     def beneficiaires(self, client_id):
         return BENEFICIAIRES.get(client_id, [])
 
+    def depenses(self, client_id, du, au):
+        self.appels.append(("depenses", client_id, du, au))
+        return {"du": du.isoformat(), "au": au.isoformat(), "depenses": "512.50", "entrees": "6000.00", "nombre": 4,
+                "par_categorie": [{"categorie": "factures", "nom": "Factures", "total": "312.00", "nombre": 1},
+                                  {"categorie": "restaurant", "nom": "Restaurant", "total": "200.50", "nombre": 2}],
+                "plus_grosse": {"id": 3, "date": "2026-10-15T09:00:00Z", "montant": "-312.00",
+                                "libelle": "Paiement facture Eau & Électricité (démo)"}}  # fmt: skip
+
     def _verifier_solde(self, client_id, montant):
         if montant > self.soldes[client_id]:
             raise banque.RefusBanque(
@@ -94,7 +102,7 @@ class FausseBanque:
 def fausse_banque(monkeypatch):
     """Le serveur tourne dans ce même processus : remplacer les fonctions de app.banque suffit."""
     fausse = FausseBanque()
-    for nom in ("solde", "compte", "transactions", "factures_impayees", "beneficiaires", "payer", "virer"):
+    for nom in ("solde", "compte", "transactions", "factures_impayees", "beneficiaires", "depenses", "payer", "virer"):
         monkeypatch.setattr(banque, nom, getattr(fausse, nom))
     return fausse
 

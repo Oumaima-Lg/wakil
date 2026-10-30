@@ -24,6 +24,7 @@ def lire() -> dict[str, list[dict]]:
     for fichier in sorted((ICI / "resultats").glob("*.json")):
         for r in json.loads(fichier.read_text())["results"]["results"]:
             v = r["vars"]
+            reponse = r.get("response") or {}  # absente si l'appel a échoué (Ollama bloqué…) : compté comme raté
             par_modele[r["provider"]["label"]].append(
                 {
                     "question": v["question"],
@@ -32,10 +33,10 @@ def lire() -> dict[str, list[dict]]:
                     "categorie": v["categorie"],
                     "bon_outil": r.get("namedScores", {}).get("bon_outil", 0) == 1,
                     "reussi": bool(r["success"]),
-                    "latence": r.get("latencyMs") or r["response"].get("latencyMs", 0),
-                    "jetons": (r["response"].get("tokenUsage") or {}).get("total", 0),
-                    "raison": (r.get("gradingResult") or {}).get("reason", r.get("error", "")),
-                    "sortie": r["response"].get("output"),
+                    "latence": r.get("latencyMs") or reponse.get("latencyMs", 0),
+                    "jetons": (reponse.get("tokenUsage") or {}).get("total", 0),
+                    "raison": (r.get("gradingResult") or {}).get("reason") or r.get("error", ""),
+                    "sortie": reponse.get("output"),
                 }
             )
     return par_modele
