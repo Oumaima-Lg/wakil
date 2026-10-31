@@ -10,7 +10,7 @@
 #      les bienvenus.
 #   2. Varie les écritures : environ un tiers en lettres arabes, un tiers en lettres latines, un tiers en mélange.
 #   3. Des phrases NOUVELLES : ne reprends ni tes messages du 29/10, ni les questions de data/faq/faq.yaml ou de
-#      evals/faq/questions.yaml (ces phrases ont déjà servi à régler Wakil ; les réutiliser fausserait la mesure).
+#      data/faq/questions-test.yaml (ces phrases ont déjà servi à régler Wakil ; les réutiliser fausserait la mesure).
 #   4. Pour chaque question : ce que Wakil DOIT faire (l'outil), et seulement les arguments que le client a donnés.
 #
 # Les outils et leurs arguments :

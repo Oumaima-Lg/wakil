@@ -3,7 +3,7 @@
 Deux paquets :
 - « test » : les questions jamais vues, qui notent Wakil (data/benchmark/questions-*.yaml) ;
 - « mise_au_point » : les questions qui ont déjà servi à régler Wakil, pour qu'elles ne faussent pas la note. Ce sont
-  les questions de evals/faq/questions.yaml, toute phrase qui apparaît déjà dans les conversations annotées
+  les questions de data/faq/questions-test.yaml, toute phrase qui apparaît déjà dans les conversations annotées
   (data/benchmark/annotations.md) ou dans les questions types de la FAQ (data/faq/faq.yaml), et les questions marquées
   « deja_vue » (Wakil a été corrigé après avoir vu leur échec).
 """
@@ -54,15 +54,15 @@ def _deja_vues() -> set[str]:
 
 
 def _questions_de_la_faq() -> list[dict]:
-    """evals/faq/questions.yaml, au format du benchmark (toutes déjà vues : mise au point)."""
+    """data/faq/questions-test.yaml, au format du benchmark (toutes déjà vues : mise au point)."""
     questions = []
-    for q in yaml.safe_load((RACINE / "evals/faq/questions.yaml").read_text()):
+    for q in yaml.safe_load((RACINE / "data/faq/questions-test.yaml").read_text()):
         if q["fiche"]:
             outil, categorie = "question_faq", "faq"
         else:
             outil = q.get("outil")
             categorie = CATEGORIE_DE_L_OUTIL.get(outil, "hors_sujet")
-        questions.append({**q, "outil": outil, "categorie": categorie, "arguments": {}, "source": "evals/faq"})
+        questions.append({**q, "outil": outil, "categorie": categorie, "arguments": {}, "source": "data/faq"})
     return questions
 
 
@@ -81,7 +81,7 @@ def creer_tests(config: dict | None = None) -> list[dict]:
         if q["categorie"] not in CATEGORIES or not set(attendus) <= OUTILS:
             print(f"Question mise de côté ({q['categorie']} / {q.get('outil')}) : {q['question']}", file=sys.stderr)
             continue
-        deja_vue = q["source"] == "evals/faq" or q.get("deja_vue") or simplifier(q["question"]) in vues
+        deja_vue = q["source"] == "data/faq" or q.get("deja_vue") or simplifier(q["question"]) in vues
         paquet = "mise_au_point" if deja_vue else "test"
         variables = {
             "question": q["question"],

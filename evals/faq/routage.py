@@ -1,4 +1,4 @@
-"""Mesure l'étape 1 de Wakil, le choix de l'outil par le LLM, sur les questions de test (evals/faq/questions.yaml).
+"""Mesure l'étape 1 de Wakil, le choix de l'outil par le LLM, sur les questions de test (data/faq/questions-test.yaml).
 
 Chaque question est envoyée au vrai LLM, avec le prompt système et les outils de Wakil, dans une conversation neuve.
 On note l'outil choisi, sans rien exécuter : ni la banque ni la FAQ ne sont appelées.
@@ -18,6 +18,7 @@ from pathlib import Path
 import yaml
 
 ICI = Path(__file__).resolve().parent
+QUESTIONS = ICI.parents[1] / "data" / "faq" / "questions-test.yaml"
 sys.path.insert(0, str(ICI.parents[1] / "apps" / "agent-api"))  # le code de l'agent, sans le copier
 
 from langchain_core.messages import HumanMessage, SystemMessage  # noqa: E402
@@ -40,7 +41,7 @@ def pourcent(n: int, total: int) -> str:
 
 
 def mesurer() -> str:
-    questions = yaml.safe_load((ICI / "questions.yaml").read_text(encoding="utf-8"))
+    questions = yaml.safe_load(QUESTIONS.read_text(encoding="utf-8"))
     llm = agent.le_llm()
     resultats, durees = [], []
     for q in questions:

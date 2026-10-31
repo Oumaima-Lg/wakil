@@ -12,6 +12,8 @@ from datetime import date
 from itertools import combinations
 from pathlib import Path
 
+import yaml
+
 ICI = Path(__file__).resolve().parent
 ECRITURES = ["arabe", "latin", "melange", "francais", "anglais", "arabe_standard"]
 
@@ -21,10 +23,15 @@ def pourcent(reussis: int, total: int) -> str:
 
 
 def lire() -> dict[str, list[dict]]:
-    """Les réponses de chaque modèle : question, paquet, écriture, catégorie, réussites, temps, jetons, raison."""
+    """Les réponses de chaque modèle : question, paquet, écriture, catégorie, réussites, temps, jetons, raison.
+
+    Seulement les modèles de promptfooconfig.yaml : un modèle retiré ne garde pas d'anciens résultats dans le rapport."""
+    mesures = {f["label"] for f in yaml.safe_load((ICI / "promptfooconfig.yaml").read_text())["providers"]}
     par_modele = defaultdict(list)
     for fichier in sorted((ICI / "resultats").glob("*.json")):
         for r in json.loads(fichier.read_text())["results"]["results"]:
+            if r["provider"]["label"] not in mesures:
+                continue
             v = r["vars"]
             reponse = r.get("response") or {}  # absente si l'appel a échoué (Ollama bloqué…) : compté comme raté
             par_modele[r["provider"]["label"]].append(

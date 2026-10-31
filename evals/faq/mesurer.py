@@ -1,4 +1,4 @@
-"""Mesure la recherche dans la FAQ sur les questions de test (evals/faq/questions.yaml), qui sont différentes des
+"""Mesure la recherche dans la FAQ sur les questions de test (data/faq/questions-test.yaml), qui sont différentes des
 questions écrites dans les fiches.
 
 Lancer depuis apps/rag-faq (base et Ollama démarrés, FAQ indexée avec python -m app.faq) :
@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 ICI = Path(__file__).resolve().parent
+QUESTIONS = ICI.parents[1] / "data" / "faq" / "questions-test.yaml"
 sys.path.insert(0, str(ICI.parents[1] / "apps" / "rag-faq"))  # le code du service de la FAQ, sans le copier
 
 from app import faq  # noqa: E402
@@ -32,7 +33,7 @@ def pourcent(n: int, total: int) -> str:
 
 
 def mesurer() -> str:
-    questions = yaml.safe_load((ICI / "questions.yaml").read_text(encoding="utf-8"))
+    questions = yaml.safe_load(QUESTIONS.read_text(encoding="utf-8"))
     connues = {f["id"] for f in faq.lire_fiches()}
     phrases_des_fiches = {q for f in faq.lire_fiches() for q in f["questions"]}
     for q in questions:  # garde-fous : la mesure ne doit ni tricher ni viser une fiche qui n'existe pas
