@@ -59,7 +59,9 @@ def get_assert(output, context) -> dict:
     sortie = json.loads(output) if isinstance(output, str) else output
     variables = context["vars"]
     attendu_outil = None if variables.get("outil") == AUCUN else variables.get("outil")
-    if attendu_outil is not None and attendu_outil.startswith("["):  # plusieurs outils, en texte JSON (questions.en_texte)
+    if attendu_outil is not None and attendu_outil.startswith(
+        "["
+    ):  # plusieurs outils, en texte JSON (questions.en_texte)
         attendu_outil = json.loads(attendu_outil)
     if isinstance(attendu_outil, list):
         lus = sortie.get("outils") or []

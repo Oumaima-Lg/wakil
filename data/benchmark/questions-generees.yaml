@@ -1,4 +1,4 @@
-# Questions du benchmark darija, écrites par Claude (50) et relues par Oumaima. Données 100 % fictives.
+# Questions du benchmark darija, générées par IA (50, puis 33 ajoutées) puis relues et validées par Oumaima. Données 100 % fictives.
 # Mêmes règles et même format que questions-oumaima.yaml. La cliente est Salma Alaoui (solde 2 350 DH, plafond
 # 10 000 DH, factures Eau & Électricité 312 DH et Internet 249 DH, un seul bénéficiaire : Fatima Lahlou).
 #
@@ -47,11 +47,11 @@
 - {question: "صيفط لفاطمة 200 درهم", ecriture: arabe, categorie: virement, outil: faire_virement, arguments: {beneficiaire: فاطمة, montant: 200}}
 - {question: "7awel 500 dh l Fatima Lahlou", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima Lahlou, montant: 500}}
 - {question: "fais un virement de 1000 DH l Fatima", ecriture: melange, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima, montant: 1000}}
-- {question: "Envoie 150 dirhams à Fatima", ecriture: francais, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima, montant: 150}}
+- {question: "Envoie 150 dirhams à Fatima", ecriture: francais, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima, montant: 150}, deja_vue: "description de lister_beneficiaires corrigée le 31/10 après cet échec"}
 - {question: "sift 2000 l Omar", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Omar, montant: 2000}}
 - {question: "حول 300 درهم لفاطمة لحلو", ecriture: arabe, categorie: virement, outil: faire_virement, arguments: {beneficiaire: فاطمة, montant: 300}}
-- {question: "bghit nsifet l Fatima", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima}}
-- {question: "sifet 400 dh", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {montant: 400}}
+- {question: "bghit nsifet l Fatima", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima}, deja_vue: "description de lister_beneficiaires corrigée le 31/10 après cet échec"}
+- {question: "sifet 400 dh", ecriture: latin, categorie: virement, outil: faire_virement, arguments: {montant: 400}, deja_vue: "description de lister_beneficiaires corrigée le 31/10 après cet échec"}
 
 # --- FAQ ---
 - {question: "شحال كتاخذ البنكة على كل عملية؟", ecriture: arabe, categorie: faq, outil: question_faq, arguments: {}}
@@ -63,7 +63,7 @@
 
 # --- Floue : l'outil, sans rien deviner ; Wakil demandera le reste ---
 - {question: "بغيت نخلص فاتورة", ecriture: arabe, categorie: floue, outil: payer_facture, arguments: {}}
-- {question: "dir liya virement 3afak", ecriture: latin, categorie: floue, outil: faire_virement, arguments: {}}
+- {question: "dir liya virement 3afak", ecriture: latin, categorie: floue, outil: faire_virement, arguments: {}, deja_vue: "description de lister_beneficiaires corrigée le 31/10 après cet échec"}
 - {question: "bghit nkhallas wa7d l facture", ecriture: latin, categorie: floue, outil: payer_facture, arguments: {}}
 
 # --- Hors sujet ---
@@ -113,3 +113,26 @@
 - {question: "شحال عندي فالحساب و شنو هي آخر العمليات؟", ecriture: arabe, categorie: plusieurs, outil: [consulter_solde, lister_transactions], arguments: {}}
 - {question: "3tini le solde w le plafond dyal virement", ecriture: melange, categorie: plusieurs, outil: [consulter_solde, consulter_plafond], arguments: {}}
 - {question: "Mon solde et mes factures impayées, s'il te plaît", ecriture: francais, categorie: plusieurs, outil: [consulter_solde, lister_factures], arguments: {}}
+
+# --- Anglais et arabe standard (ajoutées le 31/10, à relire par Oumaima) : la vision multilingue ---
+# Écritures « anglais » et « arabe_standard » (l'arabe des journaux, pas la darija). Mêmes outils, mêmes règles.
+- {question: "What's my current balance?", ecriture: anglais, categorie: solde, outil: consulter_solde, arguments: {}}
+- {question: "Show me my last transactions", ecriture: anglais, categorie: operations, outil: lister_transactions, arguments: {}}
+- {question: "Do I have any unpaid bills?", ecriture: anglais, categorie: factures, outil: lister_factures, arguments: {}}
+- {question: "Pay my internet bill", ecriture: anglais, categorie: paiement, outil: payer_facture, arguments: {fournisseur: internet}}
+- {question: "Send 300 dirhams to Fatima", ecriture: anglais, categorie: virement, outil: faire_virement, arguments: {beneficiaire: Fatima, montant: 300}, deja_vue: "description de lister_beneficiaires corrigée le 31/10 après cet échec"}
+- {question: "Who are my saved beneficiaries?", ecriture: anglais, categorie: beneficiaires, outil: lister_beneficiaires, arguments: {}}
+- {question: "How much did I spend on restaurants this month?", ecriture: anglais, categorie: depenses, outil: analyser_depenses, arguments: {periode: ce_mois, categorie: restaurant}}
+- {question: "What are the fees for a bank transfer?", ecriture: anglais, categorie: faq, outil: question_faq, arguments: {}}
+- {question: "What's the weather like in Rabat tomorrow?", ecriture: anglais, categorie: hors_sujet, outil: null, arguments: {}}
+- {question: "My balance and my unpaid bills, please", ecriture: anglais, categorie: plusieurs, outil: [consulter_solde, lister_factures], arguments: {}}
+- {question: "كم رصيد حسابي الحالي؟", ecriture: arabe_standard, categorie: solde, outil: consulter_solde, arguments: {}}
+- {question: "أرني آخر العمليات في حسابي", ecriture: arabe_standard, categorie: operations, outil: lister_transactions, arguments: {}}
+- {question: "هل لدي فواتير غير مدفوعة؟", ecriture: arabe_standard, categorie: factures, outil: lister_factures, arguments: {}}
+- {question: "ادفع فاتورة الماء والكهرباء", ecriture: arabe_standard, categorie: paiement, outil: payer_facture, arguments: {fournisseur: eau_electricite}}
+- {question: "حوّل 500 درهم إلى فاطمة", ecriture: arabe_standard, categorie: virement, outil: faire_virement, arguments: {beneficiaire: فاطمة, montant: 500}}
+- {question: "ما هو سقف التحويل في حسابي؟", ecriture: arabe_standard, categorie: plafond, outil: consulter_plafond, arguments: {}}
+- {question: "من هم المستفيدون المسجلون لدي؟", ecriture: arabe_standard, categorie: beneficiaires, outil: lister_beneficiaires, arguments: {}}
+- {question: "كم أنفقت في الشهر الماضي؟", ecriture: arabe_standard, categorie: depenses, outil: analyser_depenses, arguments: {periode: mois_dernier}}
+- {question: "ما هي رسوم التحويل البنكي؟", ecriture: arabe_standard, categorie: faq, outil: question_faq, arguments: {}}
+- {question: "اكتب لي قصيدة عن البحر", ecriture: arabe_standard, categorie: hors_sujet, outil: null, arguments: {}}

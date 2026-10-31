@@ -78,8 +78,7 @@ def lister_factures(ctx: Context) -> dict[str, Any]:
 
 @serveur.tool(title="Bénéficiaires", annotations=LECTURE, structured_output=True)
 def lister_beneficiaires(ctx: Context) -> dict[str, Any]:
-    """Liste les bénéficiaires enregistrés par le client (les personnes à qui il peut faire un virement), avec leur
-    nombre."""
+    """Liste les bénéficiaires enregistrés par le client, avec leur nombre, pour les voir ou les compter."""
     liste = [{"nom": b["nom"], "rib_masque": b["rib_masque"]} for b in banque.beneficiaires(client_de(ctx))]
     return {"beneficiaires": liste, "nombre": len(liste)}
 

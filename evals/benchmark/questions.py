@@ -3,8 +3,9 @@
 Deux paquets :
 - « test » : les questions jamais vues, qui notent Wakil (data/benchmark/questions-*.yaml) ;
 - « mise_au_point » : les questions qui ont déjà servi à régler Wakil, pour qu'elles ne faussent pas la note. Ce sont
-  les questions de evals/faq/questions.yaml, et toute phrase qui apparaît déjà dans les conversations annotées
-  (data/benchmark/annotations.md) ou dans les questions types de la FAQ (data/faq/faq.yaml).
+  les questions de evals/faq/questions.yaml, toute phrase qui apparaît déjà dans les conversations annotées
+  (data/benchmark/annotations.md) ou dans les questions types de la FAQ (data/faq/faq.yaml), et les questions marquées
+  « deja_vue » (Wakil a été corrigé après avoir vu leur échec).
 """
 
 import json
@@ -80,7 +81,8 @@ def creer_tests(config: dict | None = None) -> list[dict]:
         if q["categorie"] not in CATEGORIES or not set(attendus) <= OUTILS:
             print(f"Question mise de côté ({q['categorie']} / {q.get('outil')}) : {q['question']}", file=sys.stderr)
             continue
-        paquet = "mise_au_point" if q["source"] == "evals/faq" or simplifier(q["question"]) in vues else "test"
+        deja_vue = q["source"] == "evals/faq" or q.get("deja_vue") or simplifier(q["question"]) in vues
+        paquet = "mise_au_point" if deja_vue else "test"
         variables = {
             "question": q["question"],
             "avant": en_texte(q.get("avant") or []),

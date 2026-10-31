@@ -17,6 +17,23 @@ providers:
     label: llama3.2:3b
     config:
       modele: llama3.2:3b
+  - id: file://fournisseur.py
+    label: qwen3:8b
+    config:
+      modele: qwen3:8b
+      raisonnement: false # qwen3:8b « réfléchit » par défaut : coupé, comme qwen3:4b-instruct
+  # Atlas-Chat (MBZUAI-Paris, darija) n'appelle pas d'outils nativement : mode json (voir fournisseur.py). Fichiers GGUF de
+  # la conversion mradermacher, depuis les poids officiels (licence Gemma).
+  - id: file://fournisseur.py
+    label: atlas-chat:2b
+    config:
+      modele: hf.co/mradermacher/Atlas-Chat-2B-GGUF:Q8_0
+      mode: json
+  - id: file://fournisseur.py
+    label: atlas-chat:9b
+    config:
+      modele: hf.co/mradermacher/Atlas-Chat-9B-GGUF:Q4_K_M
+      mode: json
 
 tests: file://questions.py:creer_tests
 
