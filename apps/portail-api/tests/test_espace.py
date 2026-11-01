@@ -36,7 +36,8 @@ def test_banque_injoignable_donne_une_erreur_503(api, monkeypatch):
 def test_mon_espace_regroupe_tout_ce_que_le_front_affiche(salma):
     espace = salma.get("/moi/espace").json()
 
-    assert set(espace) == {"profil", "compte", "operations", "factures", "beneficiaires"}
+    assert set(espace) == {"profil", "compte", "operations", "factures", "beneficiaires", "cartes"}
+    assert espace["cartes"][0]["statut"] == "bloquee"  # l'état réel de la carte, lu dans la banque
     assert espace["profil"]["prenom"] == "Salma"
     assert espace["compte"]["solde"] == "2350.00"
 

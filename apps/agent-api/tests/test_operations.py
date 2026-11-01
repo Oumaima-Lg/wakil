@@ -37,16 +37,30 @@ class FauxServeurMcp:
         self.soldes = {1: Decimal("2350.00"), 2: Decimal("150.00"), 3: Decimal("18500.00")}
         self.appels = []  # à la banque : (opération, client, facture ou bénéficiaire, montant, simulation)
         self.appels_mcp = []  # au serveur MCP : (outil, client, arguments, confirmation)
+        self.cles = []  # la clé d'idempotence de chaque appel
+        self.cartes = {1: {"id": 1, "numero_masque": "•••• 7919", "expiration": "02/29", "statut": "active"}}
 
     @property
     def vrais_appels(self):
         return [appel for appel in self.appels if not appel[-1]]
 
-    def appeler(self, client_id, nom, arguments, confirme=False):
+    def appeler(self, client_id, nom, arguments, confirme=False, cle=None):
         self.appels_mcp.append((nom, client_id, arguments, confirme))
+        self.cles.append(cle)
         if nom == "payer_facture":
             return self._payer(client_id, arguments, simulation=not confirme)
+        if nom == "bloquer_carte":
+            return self._bloquer(client_id, simulation=not confirme)
         return self._virer(client_id, arguments, simulation=not confirme)
+
+    def _bloquer(self, client_id, simulation):
+        carte = self.cartes[client_id]
+        self.appels.append(("blocage", client_id, carte["id"], None, simulation))
+        if carte["statut"] != "active":
+            raise refus("carte_deja_bloquee")
+        if not simulation:
+            carte["statut"] = "bloquee"
+        return {"carte_id": carte["id"], **carte, "statut": "bloquee"}
 
     def _verifier_solde(self, client_id, montant):
         if montant > self.soldes[client_id]:
@@ -185,6 +199,27 @@ def test_oui_paye_pour_de_vrai(salma, faux_llm, fausse_banque_operations, ecrire
     )  # fmt: skip
     assert fausse_banque_operations.vrais_appels == [("paiement", 1, 1, Decimal("312.00"), False)]
     assert faux.appels == 1  # le LLM a compris la demande ; le « oui » est lu par le code, pas par le LLM
+
+
+def test_le_oui_porte_une_cle_d_idempotence_propre_a_la_carte(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux_llm("payer_facture", {"fournisseur": "eau_electricite"})
+    carte = ecrire(salma, "khelless liya la facture dyal l'eau")[2][1]
+    ecrire(salma, "Oui")
+
+    verification, paiement = fausse_banque_operations.cles
+    assert verification is None  # la vérification à blanc ne change rien : pas de clé
+    assert paiement.startswith("wakil-")
+    assert paiement not in str(carte)  # la clé reste dans la conversation, jamais dans le navigateur
+
+
+def test_deux_cartes_ont_deux_cles_differentes(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux_llm("faire_virement", {"beneficiaire": "Fatima", "montant": 100})
+    for _ in range(2):
+        ecrire(salma, "sifet 100 dh l Fatima")
+        ecrire(salma, "Oui")
+
+    cles = [cle for cle in fausse_banque_operations.cles if cle]
+    assert len(cles) == 2 and cles[0] != cles[1]
 
 
 @pytest.mark.parametrize(
@@ -377,3 +412,58 @@ def test_le_oui_part_avec_la_confirmation_et_les_identifiants_exacts(salma, faux
         ("faire_virement", 1, {"beneficiaire": "fatima", "montant": 500}, False),  # vérification à blanc
         ("faire_virement", 1, {"beneficiaire_id": 1, "montant": "500.00"}, True),  # le « oui » : la carte exacte
     ]
+
+
+# --- Blocage d'une carte : la même confirmation que pour l'argent ----------------------------------------------------
+
+
+def test_un_blocage_s_arrete_sur_la_carte_de_confirmation(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux_llm("bloquer_carte")
+
+    recus = ecrire(salma, "bloqui liya la carte, ma l9itha")
+
+    assert [nom for nom, _ in recus] == ["etape", "etape", "confirmation", "fin"]
+    carte = recus[2][1]
+    assert (carte["type"], carte["numero_masque"]) == ("blocage", "•••• 7919")
+    assert carte["question"] == "Wach nbloqui l'carte ?"
+    assert fausse_banque_operations.cartes[1]["statut"] == "active"  # rien n'est bloqué avant le « oui »
+
+
+def test_oui_bloque_la_carte(salma, faux_llm, fausse_banque_operations, ecrire):
+    faux_llm("bloquer_carte")
+    ecrire(salma, "bloqui liya la carte")
+
+    recus = ecrire(salma, "Oui")
+
+    assert reponse(recus).startswith("Tbloquat l'carte •••• 7919.")
+    assert issue(recus) == "faite"
+    assert fausse_banque_operations.cartes[1]["statut"] == "bloquee"
+    assert fausse_banque_operations.appels_mcp[-1][2] == {"carte_id": 1}  # l'identifiant exact de la carte affichée
+
+
+def test_une_carte_deja_bloquee_est_annoncee_sans_confirmation(salma, faux_llm, fausse_banque_operations, ecrire):
+    fausse_banque_operations.cartes[1]["statut"] = "bloquee"
+    faux_llm("bloquer_carte")
+
+    recus = ecrire(salma, "bloqui la carte")
+
+    assert "confirmation" not in [nom for nom, _ in recus]
+    assert reponse(recus).startswith("L'carte deja mbloquia.")
+
+
+@pytest.mark.parametrize(
+    ("message", "chiffres_du_llm", "transmis"),
+    [
+        ("bloqui liya la carte", "1234", {}),  # inventés : retirés, la seule carte active est prise
+        ("bloqui la carte li kat-sali b 7919", "7919", {"carte": "7919"}),  # écrits par le client : gardés
+        ("bloqui la carte 7919", "•••• 7919", {"carte": "•••• 7919"}),
+    ],
+)
+def test_les_chiffres_de_carte_que_le_client_n_a_pas_ecrits_sont_retires(
+    salma, faux_llm, fausse_banque_operations, ecrire, message, chiffres_du_llm, transmis
+):
+    faux_llm("bloquer_carte", {"carte": chiffres_du_llm})
+
+    ecrire(salma, message)
+
+    assert fausse_banque_operations.appels_mcp[0][2] == transmis

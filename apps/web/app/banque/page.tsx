@@ -13,6 +13,7 @@ import {
   TitreBloc,
   VariationSolde,
 } from "@/components/espace/elements";
+import { carteActuelle, grisee } from "@/lib/cartes";
 import { dateDuJour, duMois, resumeDuMois, somme } from "@/lib/espace";
 import { dh, initialesNom } from "@/lib/format";
 
@@ -22,7 +23,8 @@ export default function VueEnsemble() {
   const { espace, nouveautes, setWakilOuvert } = useEspace();
   const { payerFacture, proposer } = useWakil();
   if (!espace) return null; // en attendant, la coquille affiche « Chargement… »
-  const { profil, compte, operations, factures, beneficiaires } = espace;
+  const { profil, compte, operations, factures, beneficiaires, cartes } = espace;
+  const carte = carteActuelle(cartes); // grisée si elle est bloquée ou en opposition, comme dans « Ma carte »
   const impayees = factures.filter((f) => f.statut === "impayee");
   // Les factures à payer d'abord, puis celle qui vient d'être payée avec Wakil, puis les autres payées
   const payees = factures.filter((f) => f.statut === "payee").reverse();
@@ -60,9 +62,10 @@ export default function VueEnsemble() {
                 centré, et la carte rétrécit si l'écran fait moins de 340 px (max-w-full). */}
             <Carte
               titulaire={`${profil.prenom} ${profil.nom}`}
-              fin={compte.rib_masque.slice(-4)}
+              fin={carte ? carte.numero_masque.slice(-4) : compte.rib_masque.slice(-4)}
+              expiration={carte?.expiration}
               civilite={profil.civilite}
-              className="w-[340px] max-w-full @min-[31.25rem]:@max-[35.5rem]:w-[272px]"
+              className={`w-[340px] max-w-full transition @min-[31.25rem]:@max-[35.5rem]:w-[272px] ${grisee(carte)}`}
             />
             <div className="flex min-w-0 flex-[1_1_200px] flex-col gap-4.5 @max-[31.25rem]:text-center">
               <div className="flex flex-col gap-1">

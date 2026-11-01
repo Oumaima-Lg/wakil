@@ -34,7 +34,7 @@ def test_date_affichee_a_l_heure_du_maroc():
     # En juillet 2026, le Maroc était à UTC+1 (base tzdata) : 23 h 30 UTC le 9, c'est déjà le 10 à 0 h 30.
     # Ne jamais écrire « +1 heure » en dur : selon tzdata 2026c, le Maroc est repassé à UTC+0 le 20/09/2026.
     transaction = {"date": "2026-07-09T23:30:00Z", "libelle": "Café", "montant": "-20.00"}
-    assert "- 10/07 · Café : -20 DH" in reponses.transactions([transaction])
+    assert "- 10/07 · Café : -20 DH" in reponses.transactions({"transactions": [transaction]})
 
 
 # --- Morceau 15 : plafond, « toutes les factures », facture désignée par son montant ----------------------------------
@@ -125,3 +125,58 @@ def test_depenses_d_une_categorie_le_mois_dernier():
 def test_depenses_d_une_categorie_vide():
     resultat = DEPENSES_OCTOBRE | {"categorie": {"categorie": "taxi", "nom": "Taxi", "total": "0.00", "nombre": 0}}
     assert reponses.depenses(resultat) == "Ma srefti walou f Taxi had chhar (octobre)."
+
+
+# --- Relevé, cartes et blocage --------------------------------------------------------------------------------------
+
+RELEVE = {
+    "transactions": [{"date": "2026-09-12T10:00:00Z", "libelle": "Salaire (démo)", "montant": "6000.00"}],
+    "releve": {"mois": "2026-09", "du": "2026-09-01", "au": "2026-09-30", "complet": True, "solde_ouverture": "1000.00",
+               "total_entrees": "6000.00", "total_sorties": "0.00", "solde_cloture": "7000.00"},
+}  # fmt: skip
+
+
+def test_releve_d_un_mois_avec_ses_soldes():
+    assert reponses.transactions(RELEVE) == (
+        "Relevé dyal septembre 2026 : bdit b 1 000 DH, dkhel 6 000 DH, khrej 0 DH, w salit b 7 000 DH.\n"
+        "- 12/09 · Salaire (démo) : 6 000 DH"
+    )
+
+
+def test_releve_du_mois_en_cours_et_mois_vide():
+    en_cours = RELEVE | {"releve": RELEVE["releve"] | {"complet": False}}
+    assert reponses.transactions(en_cours).startswith("Relevé dyal septembre 2026 (chhar mazal ma salach) :")
+    assert reponses.transactions(RELEVE | {"transactions": []}) == "Ma kayna hta opération f septembre 2026."
+
+
+def test_l_etat_des_cartes():
+    carte = {"numero_masque": "•••• 7919", "expiration": "02/29", "statut": "bloquee", "motif_opposition": None}
+    assert reponses.cartes([carte]) == "3ndek carte wa7da :\n- •••• 7919 : mbloquia (kat-sala f 02/29)"
+    assert reponses.cartes([]) == "Ma 3ndek hta carte."
+
+
+def test_la_carte_de_confirmation_d_un_blocage_dit_comment_debloquer():
+    texte = reponses.confirmation({"type": "blocage", "numero_masque": "•••• 7919"})
+
+    assert texte == (
+        "Hahiya l'carte li bghiti nbloqui : •••• 7919. Tqder tdebloquiha men b3d f l'espace dyalek (Ma carte).\n"
+        "Wach nbloqui l'carte ? (Oui / La)"
+    )
+    assert reponses.operation_faite("blocage", {"numero_masque": "•••• 7919"}).startswith("Tbloquat l'carte •••• 7919.")
+
+
+@pytest.mark.parametrize(
+    ("detail", "debut"),
+    [
+        ({"code": "carte_deja_bloquee"}, "L'carte deja mbloquia."),
+        ({"code": "carte_en_opposition"}, "Had l'carte f opposition"),
+        (
+            {"code": "carte_ambigue", "cartes": ["•••• 3757", "•••• 1200"]},
+            "3ndek ktar men carte (•••• 3757, •••• 1200).",
+        ),
+        ({"code": "carte_introuvable"}, "Ma l9itch had l'carte"),
+        ({"code": "autre"}, "Smeh lia, l'banque rfdat l'blocage."),
+    ],
+)
+def test_les_refus_d_un_blocage(detail, debut):
+    assert reponses.refus("blocage", detail).startswith(debut)

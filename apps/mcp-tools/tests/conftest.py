@@ -16,7 +16,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from app import banque
-from app.serveur import CONFIRMATION, app
+from app.serveur import CONFIRMATION, IDEMPOTENCE, app
 
 EAU, INTERNET = "Eau & Électricité (démo)", "Internet (démo)"
 FACTURES = {
@@ -31,6 +31,11 @@ BENEFICIAIRES = {
         {"id": 6, "nom": "Fatima Zahra Idrissi", "rib_masque": "•••• 4410", "interne": True}],
 }  # fmt: skip
 PLAFONDS = {1: Decimal("10000.00"), 2: Decimal("5000.00"), 3: Decimal("2000.00")}
+CARTES = {
+    1: [{"id": 1, "numero_masque": "•••• 7919", "expiration": "02/29", "statut": "active", "motif_opposition": None}],
+    3: [{"id": 3, "numero_masque": "•••• 3757", "expiration": "04/31", "statut": "active", "motif_opposition": None},
+        {"id": 4, "numero_masque": "•••• 1200", "expiration": "06/30", "statut": "active", "motif_opposition": None}],
+}  # fmt: skip
 
 
 class FausseBanque:
@@ -39,6 +44,7 @@ class FausseBanque:
     def __init__(self):
         self.soldes = {1: Decimal("2350.00"), 2: Decimal("150.00"), 3: Decimal("18500.00")}
         self.appels = []
+        self.cles = []  # les clés d'idempotence reçues par les opérations
 
     def solde(self, client_id):
         self.appels.append(("solde", client_id))
@@ -56,6 +62,22 @@ class FausseBanque:
     def beneficiaires(self, client_id):
         return BENEFICIAIRES.get(client_id, [])
 
+    def cartes(self, client_id):
+        return [dict(carte) for carte in CARTES.get(client_id, [])]
+
+    def bloquer_carte(self, client_id, carte_id, simulation):
+        carte = next(c for c in CARTES[client_id] if c["id"] == carte_id)
+        self.appels.append(("blocage", client_id, carte_id, simulation))
+        if carte["statut"] != "active":
+            raise banque.RefusBanque({"code": f"carte_deja_{carte['statut']}", "message": "Déjà dans cet état"})
+        return {**carte, "statut": "bloquee"}
+
+    def releve(self, client_id, mois):
+        self.appels.append(("releve", client_id, mois))
+        return {"mois": mois, "du": f"{mois}-01", "au": f"{mois}-30", "complet": True, "solde_ouverture": "1000.00",
+                "total_entrees": "500.00", "total_sorties": "200.00", "solde_cloture": "1300.00",
+                "transactions": [{"id": 9, "date": f"{mois}-12T10:00:00Z", "montant": "500.00", "libelle": "Virement reçu"}]}  # fmt: skip
+
     def depenses(self, client_id, du, au):
         self.appels.append(("depenses", client_id, du, au))
         return {"du": du.isoformat(), "au": au.isoformat(), "depenses": "512.50", "entrees": "6000.00", "nombre": 4,
@@ -71,7 +93,8 @@ class FausseBanque:
                  "solde": f"{self.soldes[client_id]:.2f}", "montant": f"{montant:.2f}"}
             )  # fmt: skip
 
-    def payer(self, client_id, facture_id, simulation):
+    def payer(self, client_id, facture_id, simulation, cle=None):
+        self.cles.append(cle)
         facture = next(f for f in FACTURES[client_id] if f["id"] == facture_id)
         montant = Decimal(facture["montant"])
         self.appels.append(("paiement", client_id, facture_id, simulation))
@@ -82,7 +105,8 @@ class FausseBanque:
         return {"facture_id": facture_id, "fournisseur": facture["fournisseur"], "montant": facture["montant"],
                 "nouveau_solde": f"{nouveau:.2f}", "simulation": simulation}  # fmt: skip
 
-    def virer(self, client_id, beneficiaire_id, montant, simulation):
+    def virer(self, client_id, beneficiaire_id, montant, simulation, cle=None):
+        self.cles.append(cle)
         beneficiaire = next(b for b in BENEFICIAIRES[client_id] if b["id"] == beneficiaire_id)
         self.appels.append(("virement", client_id, beneficiaire_id, montant, simulation))
         if montant > PLAFONDS[client_id]:
@@ -102,7 +126,9 @@ class FausseBanque:
 def fausse_banque(monkeypatch):
     """Le serveur tourne dans ce même processus : remplacer les fonctions de app.banque suffit."""
     fausse = FausseBanque()
-    for nom in ("solde", "compte", "transactions", "factures_impayees", "beneficiaires", "depenses", "payer", "virer"):
+    noms = ("solde", "compte", "transactions", "factures_impayees", "beneficiaires", "depenses", "payer", "virer",
+            "cartes", "bloquer_carte", "releve")  # fmt: skip
+    for nom in noms:
         monkeypatch.setattr(banque, nom, getattr(fausse, nom))
     return fausse
 
@@ -129,10 +155,11 @@ def mcp(url_du_serveur):
         entetes = {"X-Client-Id": str(client_id)} if client_id is not None else {}
         return Client(streamable_http_client(url_du_serveur, http_client=create_mcp_http_client(headers=entetes)))
 
-    def appeler(nom, arguments=None, client_id=1, confirmation=None):
+    def appeler(nom, arguments=None, client_id=1, confirmation=None, idempotence=None):
         async def faire():
             async with client(client_id) as c:
-                meta = {CONFIRMATION: confirmation} if confirmation else None
+                meta = {CONFIRMATION: confirmation} if confirmation else {}
+                meta = {**meta, IDEMPOTENCE: idempotence} if idempotence else meta or None
                 return await c.call_tool(nom, arguments or {}, meta=meta)
 
         return asyncio.run(faire())

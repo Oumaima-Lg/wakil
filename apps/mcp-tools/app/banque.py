@@ -24,12 +24,16 @@ def _get(client_id: int, chemin: str, **params):
     return reponse.json()
 
 
-def _post(client_id: int, chemin: str, simulation: bool, json: dict | None = None) -> dict:
+def _post(client_id: int, chemin: str, simulation: bool, json: dict | None = None, cle: str | None = None) -> dict:
+    """cle : la clé d'idempotence de l'opération ; rejouée, la banque renvoie la même réponse sans rien refaire."""
+    entetes = {"X-Client-Id": str(client_id)}
+    if cle and not simulation:
+        entetes["Idempotency-Key"] = cle
     reponse = httpx.post(
         f"{BANK_API_URL}{chemin}",
         params={"simulation": "true"} if simulation else None,
         json=json,
-        headers={"X-Client-Id": str(client_id)},
+        headers=entetes,
         timeout=10,
     )
     if reponse.status_code == 409:
@@ -63,17 +67,29 @@ def beneficiaires(client_id: int) -> list[dict]:
     return _get(client_id, f"/clients/{client_id}/beneficiaires")
 
 
+def cartes(client_id: int) -> list[dict]:
+    return _get(client_id, f"/clients/{client_id}/cartes")
+
+
+def releve(client_id: int, mois: str) -> dict:
+    """Le relevé d'un mois (« 2026-09 ») : solde au début, opérations, totaux, solde à la fin."""
+    return _get(client_id, f"/comptes/{_compte_principal(client_id)}/releves/{mois}")
+
+
 def depenses(client_id: int, du: date, au: date) -> dict:
     """Entrées, sorties et sorties par catégorie entre deux dates incluses, calculées par la banque."""
     return _get(client_id, f"/comptes/{_compte_principal(client_id)}/depenses", du=du.isoformat(), au=au.isoformat())
 
 
 # Opérations. simulation=True : vérification à blanc, la banque vérifie et calcule tout puis annule.
-def payer(client_id: int, facture_id: int, simulation: bool) -> dict:
-    return _post(client_id, f"/factures/{facture_id}/payer", simulation)
+def payer(client_id: int, facture_id: int, simulation: bool, cle: str | None = None) -> dict:
+    return _post(client_id, f"/factures/{facture_id}/payer", simulation, cle=cle)
 
 
-def virer(client_id: int, beneficiaire_id: int, montant: Decimal, simulation: bool) -> dict:
-    return _post(
-        client_id, "/virements", simulation, json={"beneficiaire_id": beneficiaire_id, "montant": str(montant)}
-    )
+def virer(client_id: int, beneficiaire_id: int, montant: Decimal, simulation: bool, cle: str | None = None) -> dict:
+    corps = {"beneficiaire_id": beneficiaire_id, "montant": str(montant)}
+    return _post(client_id, "/virements", simulation, json=corps, cle=cle)
+
+
+def bloquer_carte(client_id: int, carte_id: int, simulation: bool) -> dict:
+    return _post(client_id, f"/cartes/{carte_id}/blocage", simulation)

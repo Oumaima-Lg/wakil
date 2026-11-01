@@ -36,6 +36,7 @@ serveur = MCPServer(
 LECTURE = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 OPERATION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
 CONFIRMATION = "wakil/confirmation"
+IDEMPOTENCE = "wakil/idempotence"
 
 
 def client_de(ctx: Context) -> int:
@@ -52,6 +53,13 @@ def confirme(ctx: Context) -> bool:
     return meta.get(CONFIRMATION) == "oui"
 
 
+def cle_idempotence(ctx: Context) -> str | None:
+    """La clé unique de l'opération, jointe par l'application (Wakil : la carte « Wach nconfirmi ? »). La banque la
+    garde : un appel rejoué avec la même clé ne paie ni ne vire deux fois."""
+    cle = (ctx.request_context.meta or {}).get(IDEMPOTENCE)
+    return cle if isinstance(cle, str) else None
+
+
 @serveur.tool(title="Consulter le solde", annotations=LECTURE, structured_output=True)
 def consulter_solde(ctx: Context) -> dict[str, Any]:
     """Donne le solde actuel du compte du client."""
@@ -65,9 +73,24 @@ def consulter_plafond(ctx: Context) -> dict[str, Any]:
 
 
 @serveur.tool(title="Dernières opérations", annotations=LECTURE, structured_output=True)
-def lister_transactions(ctx: Context) -> dict[str, Any]:
-    """Liste les dernières opérations du compte du client (dépenses, virements reçus)."""
-    return {"transactions": banque.transactions(client_de(ctx))}
+def lister_transactions(
+    ctx: Context,
+    mois: Annotated[
+        Annotated[int, Field(ge=1, le=12)] | None,
+        Field(description="Le numéro du mois (1 à 12), seulement si le client demande un mois précis ou son relevé."),
+    ] = None,
+) -> dict[str, Any]:
+    """Liste les dernières opérations du compte du client (dépenses, virements reçus), ou le relevé d'un mois."""
+    if mois is None:
+        return {"transactions": banque.transactions(client_de(ctx))}
+    return analyse.releve(client_de(ctx), mois)
+
+
+@serveur.tool(title="Mes cartes", annotations=LECTURE, structured_output=True)
+def consulter_cartes(ctx: Context) -> dict[str, Any]:
+    """Donne les cartes bancaires du client et leur état : active, bloquée ou en opposition."""
+    champs = ("numero_masque", "expiration", "statut", "motif_opposition")
+    return {"cartes": [{champ: carte[champ] for champ in champs} for carte in banque.cartes(client_de(ctx))]}
 
 
 @serveur.tool(title="Factures à payer", annotations=LECTURE, structured_output=True)
@@ -127,7 +150,9 @@ def payer_facture(
     """Paye une facture impayée du client (eau et électricité, internet, mobile). En darija, le client dit
     « khelless », « khalles », « nkhelless » ou « خلص ». Sans la confirmation du client, l'outil vérifie seulement :
     rien n'est payé."""
-    return operations.payer_facture(client_de(ctx), fournisseur, facture_id, confirme(ctx), montant)
+    return operations.payer_facture(
+        client_de(ctx), fournisseur, facture_id, confirme(ctx), montant, cle=cle_idempotence(ctx)
+    )
 
 
 @serveur.tool(title="Faire un virement", annotations=OPERATION, structured_output=True)
@@ -141,7 +166,25 @@ def faire_virement(
 ) -> dict[str, Any]:
     """Vire de l'argent à un bénéficiaire déjà enregistré par le client. En darija, le client dit « sifet », « sift »,
     « 7awel » ou « صيفط ». Sans la confirmation du client, l'outil vérifie seulement : rien n'est viré."""
-    return operations.faire_virement(client_de(ctx), beneficiaire, montant, beneficiaire_id, confirme(ctx))
+    return operations.faire_virement(
+        client_de(ctx), beneficiaire, montant, beneficiaire_id, confirme(ctx), cle=cle_idempotence(ctx)
+    )
+
+
+@serveur.tool(title="Bloquer une carte", annotations=OPERATION, structured_output=True)
+def bloquer_carte(
+    ctx: Context,
+    carte: Annotated[
+        str | None, Field(description="Les 4 derniers chiffres de la carte, seulement s'ils sont donnés.")
+    ] = None,
+    carte_id: Annotated[
+        int | None, Field(description="Identifiant exact de la carte, donné par l'application : jamais à deviner.")
+    ] = None,
+) -> dict[str, Any]:
+    """Bloque temporairement la carte bancaire du client (perdue, égarée, un doute). En darija, le client dit
+    « bloqui l'carte » ou « sedd l'carte ». Ne débloque jamais : le déblocage et l'opposition se font dans l'espace du
+    client. Sans la confirmation du client, l'outil vérifie seulement : rien n'est bloqué."""
+    return operations.bloquer_carte(client_de(ctx), carte, carte_id, confirme(ctx))
 
 
 # L'application web (ASGI) que lance uvicorn. Sans état (spécification MCP 2026-07-28) : chaque requête se suffit à

@@ -5,7 +5,9 @@ aucune opération sans un « oui » explicite.
 """
 
 import os
+import re
 import unicodedata
+import uuid
 from typing import Annotated, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
@@ -23,8 +25,8 @@ SYSTEME = (
     "Le client écrit en darija marocaine, en lettres arabes ou latines, souvent mélangée au français. "
     "Si la demande concerne son compte, appelle l'outil adapté ; s'il demande plusieurs choses sur son compte, "
     "appelle un outil pour chacune. "
-    "Pour payer une facture ou faire un virement, appelle l'outil avec ses paramètres : le client confirmera "
-    "toujours avant que la banque n'exécute quoi que ce soit. N'invente jamais un montant ni un bénéficiaire. "
+    "Pour payer une facture, faire un virement ou bloquer une carte, appelle l'outil avec ses paramètres : le client "
+    "confirmera toujours avant que la banque n'exécute quoi que ce soit. N'invente jamais un montant ni un bénéficiaire. "
     "Pour une question générale sur la banque ou sur toi (frais, plafond, délais, bénéficiaires, carte perdue, codes, "
     "découvert, ce que tu sais faire), appelle question_faq. "
     "Sinon, si la demande est hors sujet, réponds en darija que tu ne t'occupes que de la banque."
@@ -49,12 +51,14 @@ def lire(nom: str, cle: str | None = None):
 OUTILS = {
     "consulter_solde": (lire("consulter_solde"), reponses.solde),
     "consulter_plafond": (lire("consulter_plafond"), reponses.plafond),
-    "lister_transactions": (lire("lister_transactions", "transactions"), reponses.transactions),
+    "lister_transactions": (lire("lister_transactions"), reponses.transactions),  # avec le relevé si un mois est donné
     "lister_factures": (lire("lister_factures", "factures"), reponses.factures),
     "lister_beneficiaires": (lire("lister_beneficiaires"), reponses.beneficiaires),
     "analyser_depenses": (lire("analyser_depenses"), reponses.depenses),
+    "consulter_cartes": (lire("consulter_cartes", "cartes"), reponses.cartes),
 }
-OPERATIONS = {"payer_facture": "paiement", "faire_virement": "virement"}
+# Wakil peut seulement bloquer une carte : le déblocage et l'opposition se font dans l'espace (décision du 31/10/2026).
+OPERATIONS = {"payer_facture": "paiement", "faire_virement": "virement", "bloquer_carte": "blocage"}
 LECTURES_MAX = 3  # « le solde, les factures w les bénéficiaires » : au plus 3 lectures pour un même message
 # La FAQ : l'outil du serveur MCP de la FAQ (apps/rag-faq), qui retrouve la fiche qui répond. Son paramètre est rempli
 # par l'application avec la phrase du client, jamais par le LLM (voir outils.REMPLIS_PAR_L_APPLICATION).
@@ -101,6 +105,7 @@ class Etat(TypedDict, total=False):
     lectures: list[dict]  # les lectures qui restent à faire pour ce message : {"outil", "arguments"}
     resultat: dict | list | None
     operation: dict | None  # l'opération vérifiée à blanc, qui attend la réponse du client
+    cle: str | None  # la clé d'idempotence de cette opération : une par carte, jamais envoyée au navigateur
     confirmation: Literal["oui", "non"] | None
     # Ce qu'est devenue l'opération, pour que le front mette la carte à jour.
     issue: Literal["faite", "annulee", "incomprise", "refusee", "erreur"] | None
@@ -123,6 +128,7 @@ def nouveau_tour(demande: str, client_id: int, facture_id: int | None = None) ->
         "lectures": [],
         "resultat": None,
         "operation": None,
+        "cle": None,
         "confirmation": None,
         "issue": None,
         "erreur": False,
@@ -155,14 +161,18 @@ def prochaine_entree(graphe, demande: str, client_id: int, conf: dict, facture_i
     return nouveau_tour(demande, client_id, facture_id)
 
 
-def dire(texte: str, outil: str | None = None) -> dict:
+def dire(texte: str, outil: str | None = None, echec: bool = False) -> dict:
     """La réponse de Wakil, ajoutée aussi à la mémoire. outil : celui que le LLM avait choisi pour ce tour ; c'est tout
-    ce que le LLM relira de cette réponse (voir pour_le_llm)."""
-    return {"reponse": texte, "messages": [AIMessage(texte, additional_kwargs={"outil": outil} if outil else {})]}
+    ce que le LLM relira de cette réponse (voir pour_le_llm). echec : l'outil n'a pas pu aboutir (banque injoignable)."""
+    marques = ({"outil": outil} | ({"echec": True} if echec else {})) if outil else {}
+    return {"reponse": texte, "messages": [AIMessage(texte, additional_kwargs=marques)]}
 
 
 # Ce que le LLM relit à la place d'une réponse de Wakil : l'outil appelé, puis « fait », sans le texte ni les données.
 FAIT = "Fait : la réponse a été affichée au client."
+# Un appel qui n'a pas abouti n'est pas relu comme « fait » : sinon, quand le client redemande la même chose, le LLM croit
+# que c'est déjà traité et ne rappelle pas l'outil (vu le 31/10/2026 : « bloqui liya la carte » refusé après une panne).
+ECHEC = "Échec : la banque n'a pas répondu, rien n'a été fait."
 
 
 def pour_le_llm(messages: list[AnyMessage]) -> list[AnyMessage]:
@@ -185,7 +195,7 @@ def pour_le_llm(messages: list[AnyMessage]) -> list[AnyMessage]:
             appel = f"tour-{numero}"
             lus += [
                 AIMessage("", tool_calls=[{"name": outil, "args": {}, "id": appel}]),
-                ToolMessage(FAIT, tool_call_id=appel),
+                ToolMessage(ECHEC if message.additional_kwargs.get("echec") else FAIT, tool_call_id=appel),
             ]
     # Les HISTORIQUE derniers messages du client, avec ce qui les suit.
     debuts = [i for i, message in enumerate(lus) if isinstance(message, HumanMessage)][-HISTORIQUE:]
@@ -198,16 +208,43 @@ def simplifier(texte: str) -> str:
     return sans_accents.lower().strip().strip("!?.,;:، ")
 
 
-def avant_comprendre(etat: Etat) -> Literal["preparer_operation", "saluer", "remercier", "comprendre"]:
-    """Aiguillage de départ : un bouton « Payer avec Wakil », une salutation ou une politesse ne passent pas par le LLM."""
-    if etat.get("outil") in OPERATIONS:
-        return "preparer_operation"
+def avant_comprendre(etat: Etat) -> Literal["verifier_carte", "saluer", "remercier"]:
+    """Aiguillage de départ : une salutation ou une politesse ne passent pas par le LLM ; toute autre demande (ou un
+    bouton « Payer avec Wakil ») passe d'abord par la vérification de la carte."""
     texte = etat["demande"].strip().lower().rstrip("!?.، ")
-    if texte in SALUTATIONS:
+    if etat.get("outil") not in OPERATIONS and texte in SALUTATIONS:
         return "saluer"
-    if texte in POLITESSES:
+    if etat.get("outil") not in OPERATIONS and texte in POLITESSES:
         return "remercier"
-    return "comprendre"
+    return "verifier_carte"
+
+
+def carte_qui_bloque(client_id: int) -> dict | None:
+    """La carte du client si elle met Wakil en mode sécurité : celle qui sert encore est bloquée, ou toutes ses cartes
+    sont en opposition (pas encore de nouvelle carte). None si tout va bien, ou si la banque ne répond pas : la demande
+    suit alors son cours, et c'est l'outil appelé qui signalera la panne."""
+    try:
+        cartes = outils.appeler(client_id, "consulter_cartes", {})["cartes"]
+    except outils.OutilsIndisponibles:
+        return None
+    actuelle = next((c for c in cartes if c["statut"] != "opposee"), cartes[-1] if cartes else None)
+    return actuelle if actuelle and actuelle["statut"] != "active" else None
+
+
+def verifier_carte(etat: Etat) -> dict:
+    """Mode sécurité (choix d'Oumaima, 31/10/2026) : tant que la carte est bloquée ou en opposition, Wakil ne fait rien
+    (ni lecture ni opération) et dit comment la débloquer ou en commander une nouvelle, dans l'espace. Une vraie banque
+    laisse en général le compte utilisable quand seule la carte est bloquée : c'est un choix volontaire de la démo."""
+    carte = carte_qui_bloque(etat["client_id"])
+    if carte is None:
+        return {}
+    return dire(reponses.mode_securite(carte))
+
+
+def apres_verification(etat: Etat) -> Literal["preparer_operation", "comprendre", "__end__"]:
+    if etat.get("reponse"):  # mode sécurité : Wakil a déjà répondu
+        return END
+    return "preparer_operation" if etat.get("outil") in OPERATIONS else "comprendre"
 
 
 def saluer(etat: Etat) -> dict:
@@ -239,11 +276,24 @@ def choisir(appels: list[dict]) -> dict:
     return {**(choisi or {"outil": None, "arguments": {}}), "lectures": []}
 
 
+def sans_invention(outil: str | None, arguments: dict, demande: str) -> dict:
+    """Le code vérifie ce que le LLM a rempli : les 4 chiffres d'une carte ne sont gardés que s'ils sont écrits dans le
+    message du client. qwen3:4b met « 1234 » quand le client ne donne rien (mesuré le 31/10/2026) : sans ces chiffres,
+    le serveur MCP prend la seule carte active, et la carte de confirmation montre toujours le vrai numéro."""
+    if outil != "bloquer_carte" or "carte" not in arguments:
+        return arguments
+    chiffres = re.sub(r"\D", "", str(arguments["carte"]))[-4:]
+    if chiffres and chiffres in re.sub(r"\D", "", demande):
+        return arguments
+    return {nom: valeur for nom, valeur in arguments.items() if nom != "carte"}
+
+
 def comprendre(etat: Etat) -> dict:
     """Le LLM lit la demande, avec la conversation récente pour le contexte (voir pour_le_llm), et choisit un ou
-    plusieurs outils (et leurs paramètres), ou aucun."""
+    plusieurs outils (et leurs paramètres), ou aucun. Le code retire ensuite ce que le client n'a pas écrit."""
     message = le_llm().invoke([SystemMessage(SYSTEME), *pour_le_llm(etat["messages"])])
-    return choisir(message.tool_calls)
+    choix = choisir(message.tool_calls)
+    return choix | {"arguments": sans_invention(choix["outil"], choix["arguments"], etat["demande"])}
 
 
 def apres_comprendre(etat: Etat) -> Literal["executer_outil", "preparer_operation", "repondre_faq", "refuser"]:
@@ -268,7 +318,7 @@ def executer_outil(etat: Etat) -> dict:
 def repondre(etat: Etat) -> dict:
     """Le code met le résultat de la banque en phrase : une réponse par lecture."""
     if etat.get("erreur"):
-        return dire(reponses.ERREUR, etat["outil"])
+        return dire(reponses.ERREUR, etat["outil"], echec=True)
     _, formuler = OUTILS[etat["outil"]]
     return dire(formuler(etat["resultat"]), etat["outil"])
 
@@ -290,7 +340,7 @@ def repondre_faq(etat: Etat) -> dict:
     try:
         fiche = outils.appeler(None, OUTIL_FAQ, {"question": etat["demande"]})["fiche"]
     except outils.OutilsIndisponibles:
-        return {"erreur": True, **dire(reponses.FAQ_INDISPONIBLE, OUTIL_FAQ)}
+        return {"erreur": True, **dire(reponses.FAQ_INDISPONIBLE, OUTIL_FAQ, echec=True)}
     if fiche is None:  # aucune fiche assez proche : on le dit au lieu d'en citer une qui ne répond pas
         return dire(reponses.FAQ_INTROUVABLE, OUTIL_FAQ)
     return {"resultat": fiche, **dire(reponses.faq(fiche["titre"], fiche["texte"]), OUTIL_FAQ)}
@@ -309,7 +359,7 @@ def preparer_operation(etat: Etat) -> dict:
     except outils.RefusOutil as refus:
         return dire(reponses.refus(type_operation, refus.detail), etat["outil"])
     except outils.OutilsIndisponibles:
-        return {"erreur": True, **dire(reponses.ERREUR, etat["outil"])}
+        return {"erreur": True, **dire(reponses.ERREUR, etat["outil"], echec=True)}
 
     operation = {"type": type_operation, **apercu}
     operation |= {
@@ -319,7 +369,9 @@ def preparer_operation(etat: Etat) -> dict:
     }
     # La question entre dans l'historique ; la réponse du client y entrera à la reprise.
     question = AIMessage(operation["texte"], additional_kwargs={"outil": etat["outil"]})
-    return {"operation": operation, "messages": [question]}
+    # Une clé par carte, gardée avec la conversation : si l'appel du « oui » est rejoué (double clic, agent redémarré
+    # après que la banque a exécuté), la banque renvoie la même réponse au lieu de payer une seconde fois.
+    return {"operation": operation, "cle": f"wakil-{uuid.uuid4().hex}", "messages": [question]}
 
 
 def apres_preparation(etat: Etat) -> Literal["demander_confirmation", "__end__"]:
@@ -352,10 +404,12 @@ def executer_operation(etat: Etat) -> dict:
     outil = {"outil": etat["outil"]}
     if operation["type"] == "paiement":
         arguments = {"facture_id": operation["facture_id"]}
+    elif operation["type"] == "blocage":
+        arguments = {"carte_id": operation["carte_id"]}
     else:
         arguments = {"beneficiaire_id": operation["beneficiaire_id"], "montant": operation["montant"]}
     try:
-        resultat = outils.appeler(client_id, etat["outil"], arguments, confirme=True)
+        resultat = outils.appeler(client_id, etat["outil"], arguments, confirme=True, cle=etat.get("cle"))
     except outils.RefusOutil as refus:  # la situation a changé entre la carte et le « oui »
         return {**outil, "issue": "refusee", **dire(reponses.refus(operation["type"], refus.detail), etat["outil"])}
     except outils.OutilsIndisponibles:
@@ -377,6 +431,7 @@ def annuler(etat: Etat) -> dict:
 
 
 graphe = StateGraph(Etat)
+graphe.add_node("verifier_carte", verifier_carte)
 graphe.add_node("saluer", saluer)
 graphe.add_node("remercier", remercier)
 graphe.add_node("comprendre", comprendre)
@@ -389,6 +444,7 @@ graphe.add_node("demander_confirmation", demander_confirmation)
 graphe.add_node("executer_operation", executer_operation)
 graphe.add_node("annuler", annuler)
 graphe.add_conditional_edges(START, avant_comprendre)
+graphe.add_conditional_edges("verifier_carte", apres_verification)
 graphe.add_conditional_edges("comprendre", apres_comprendre)
 graphe.add_edge("executer_outil", "repondre")
 graphe.add_conditional_edges("repondre", apres_repondre)

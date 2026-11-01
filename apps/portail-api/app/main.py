@@ -11,7 +11,8 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.routers import espace, session
+from app import banque
+from app.routers import cartes, espace, session
 
 app = FastAPI(
     title="Banque Atlas Démo · portail",
@@ -19,6 +20,7 @@ app = FastAPI(
 )
 app.include_router(session.router)
 app.include_router(espace.router)
+app.include_router(cartes.router)
 
 
 @app.exception_handler(httpx.HTTPError)
@@ -26,3 +28,9 @@ def banque_injoignable(request: Request, erreur: httpx.HTTPError) -> JSONRespons
     """Si bank-api ne répond pas, le front reçoit un 503 clair au lieu d'une erreur 500, pour toutes les routes.
     Équivalent Spring : un @ExceptionHandler dans un @ControllerAdvice."""
     return JSONResponse(status_code=503, content={"detail": "Banque indisponible"})
+
+
+@app.exception_handler(banque.RefusBanque)
+def refus_de_la_banque(request: Request, refus: banque.RefusBanque) -> JSONResponse:
+    """Un refus de la banque (carte déjà active, en opposition…) arrive au front tel quel, avec son code."""
+    return JSONResponse(status_code=refus.statut, content={"detail": refus.detail})

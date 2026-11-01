@@ -16,17 +16,18 @@ def resultat(appel):
 # --- Ce que le serveur annonce ------------------------------------------------------------------------------------
 
 
-LECTURES = ["analyser_depenses", "consulter_plafond", "consulter_solde", "lister_beneficiaires", "lister_factures",
-            "lister_transactions"]  # fmt: skip
+LECTURES = ["analyser_depenses", "consulter_cartes", "consulter_plafond", "consulter_solde", "lister_beneficiaires",
+            "lister_factures", "lister_transactions"]  # fmt: skip
+OPERATIONS = ["bloquer_carte", "faire_virement", "payer_facture"]
 
 
-def test_le_serveur_annonce_ses_huit_outils_et_ce_qu_ils_font(mcp):
+def test_le_serveur_annonce_ses_dix_outils_et_ce_qu_ils_font(mcp):
     outils = {o.name: o for o in mcp.lister()}
 
-    assert sorted(outils) == sorted([*LECTURES, "faire_virement", "payer_facture"])
+    assert sorted(outils) == sorted([*LECTURES, *OPERATIONS])
     for lecture in LECTURES:
         assert outils[lecture].annotations.read_only_hint is True
-    for operation in ("payer_facture", "faire_virement"):
+    for operation in OPERATIONS:
         assert (
             outils[operation].annotations.destructive_hint is True
         )  # un client bien fait demande l'accord de l'humain
@@ -242,3 +243,107 @@ def test_un_virement_confirme_avec_l_identifiant_exact(mcp, fausse_banque):
 
     assert (fait["simulation"], fait["nouveau_solde"]) == (False, "1850.00")
     assert fausse_banque.appels == [("virement", 1, 1, Decimal("500.00"), False)]
+
+
+# --- Idempotence : la clé de l'application va jusqu'à la banque ------------------------------------------------------
+
+
+def test_la_cle_d_idempotence_suit_l_operation_confirmee(mcp, fausse_banque):
+    mcp("payer_facture", {"fournisseur": "internet"}, confirmation="oui", idempotence="carte-42")
+
+    assert fausse_banque.cles == ["carte-42"]
+
+
+def test_sans_cle_l_operation_part_sans_cle(mcp, fausse_banque):
+    mcp("faire_virement", {"beneficiaire": "Omar", "montant": 100}, confirmation="oui")
+
+    assert fausse_banque.cles == [None]
+
+
+@pytest.mark.parametrize(("simulation", "attendu"), [(False, "carte-7"), (True, None)])
+def test_l_en_tete_idempotency_key_seulement_pour_une_vraie_operation(monkeypatch, simulation, attendu):
+    """Une vérification à blanc ne change rien à la banque : elle ne porte pas de clé."""
+    from app import banque as vraie_banque
+
+    envoye = {}
+
+    class Reponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {}
+
+    def post(url, params=None, json=None, headers=None, timeout=None):
+        envoye.update(headers)
+        return Reponse()
+
+    monkeypatch.setattr(vraie_banque.httpx, "post", post)
+    vraie_banque._post(1, "/virements", simulation, json={}, cle="carte-7")
+
+    assert envoye.get("Idempotency-Key") == attendu
+
+
+# --- Relevé d'un mois et cartes ------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("numero", "attendu"), [(10, "2026-10"), (9, "2026-09"), (1, "2026-01"), (11, "2025-11"), (12, "2025-12")]
+)
+def test_le_mois_du_releve_est_le_dernier_deja_commence(numero, attendu):
+    assert analyse.mois_du_releve(numero, date(2026, 10, 31)) == attendu
+
+
+def test_un_mois_donne_le_releve_avec_son_resume(mcp, fausse_banque):
+    lu = resultat(mcp("lister_transactions", {"mois": 9}))
+
+    assert fausse_banque.appels[0][0] == "releve" and fausse_banque.appels[0][2].endswith("-09")
+    assert lu["releve"]["solde_cloture"] == "1300.00" and "transactions" not in lu["releve"]
+    assert lu["transactions"][0]["libelle"] == "Virement reçu"
+
+
+def test_sans_mois_les_dernieres_operations(mcp, fausse_banque):
+    assert "releve" not in resultat(mcp("lister_transactions"))
+    assert fausse_banque.appels == []
+
+
+def test_un_mois_hors_de_1_a_12_est_refuse(mcp, fausse_banque):
+    assert mcp("lister_transactions", {"mois": 13}).is_error
+    assert fausse_banque.appels == []
+
+
+def test_les_cartes_et_leur_etat(mcp):
+    assert resultat(mcp("consulter_cartes"))["cartes"] == [
+        {"numero_masque": "•••• 7919", "expiration": "02/29", "statut": "active", "motif_opposition": None}
+    ]
+
+
+def test_sans_confirmation_le_blocage_est_seulement_verifie(mcp, fausse_banque):
+    carte = resultat(mcp("bloquer_carte"))
+
+    assert (carte["carte_id"], carte["statut"], carte["numero_masque"]) == (1, "bloquee", "•••• 7919")
+    assert fausse_banque.appels == [("blocage", 1, 1, True)]
+
+
+def test_avec_la_confirmation_la_carte_est_bloquee(mcp, fausse_banque):
+    mcp("bloquer_carte", {"carte_id": 1}, confirmation="oui")
+
+    assert fausse_banque.appels == [("blocage", 1, 1, False)]
+
+
+def test_deux_cartes_actives_il_faut_dire_laquelle(mcp, fausse_banque):
+    refus = resultat(mcp("bloquer_carte", client_id=3))["refus"]
+
+    assert (refus["code"], refus["cartes"]) == ("carte_ambigue", ["•••• 3757", "•••• 1200"])
+    assert fausse_banque.appels == []
+
+
+@pytest.mark.parametrize("chiffres", ["1200", "la carte qui finit par 1200", "•••• 1200"])
+def test_la_carte_designee_par_ses_4_derniers_chiffres(mcp, fausse_banque, chiffres):
+    assert resultat(mcp("bloquer_carte", {"carte": chiffres}, client_id=3))["carte_id"] == 4
+
+
+def test_des_chiffres_qui_ne_correspondent_a_aucune_carte(mcp):
+    assert resultat(mcp("bloquer_carte", {"carte": "0000"}))["refus"]["code"] == "carte_introuvable"

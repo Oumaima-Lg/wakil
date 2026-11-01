@@ -60,6 +60,19 @@ def fausse_banque(monkeypatch):
         "beneficiaires",
         lambda client_id: [{"id": 1, "nom": "Fatima Lahlou", "rib_masque": "•••• 8633", "interne": True}],
     )
+    monkeypatch.setattr(
+        banque,
+        "cartes",
+        lambda client_id: [
+            {
+                "id": 1,
+                "numero_masque": "•••• 7919",
+                "expiration": "02/29",
+                "statut": "bloquee",
+                "motif_opposition": None,
+            }
+        ],
+    )
 
 
 @pytest.fixture

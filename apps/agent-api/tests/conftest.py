@@ -13,6 +13,12 @@ from tests.jetons import CLE_PUBLIQUE, jeton
 
 
 @pytest.fixture(autouse=True)
+def carte_active(monkeypatch):
+    """Par défaut, la carte du client est active : pas de mode sécurité, et aucun appel au vrai serveur MCP."""
+    monkeypatch.setattr(agent, "carte_qui_bloque", lambda client_id: None)
+
+
+@pytest.fixture(autouse=True)
 def cle_de_test(monkeypatch):
     """La clé publique d'une paire de test : la vraie reste dans .env."""
     monkeypatch.setenv("WAKIL_JWT_CLE_PUBLIQUE", CLE_PUBLIQUE)

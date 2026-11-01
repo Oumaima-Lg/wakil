@@ -38,4 +38,5 @@ def mon_espace(client_id: ClientConnecte) -> dict:
         "operations": banque.operations(client_id),
         "factures": banque.toutes_factures(client_id),
         "beneficiaires": banque.beneficiaires(client_id),
+        "cartes": banque.cartes(client_id),
     }

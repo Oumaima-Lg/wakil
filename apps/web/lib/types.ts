@@ -4,6 +4,15 @@ export type Compte = { id: number; rib_masque: string; plafond_virement: string;
 export type Operation = { id: number; date: string; montant: string; libelle: string };
 export type Facture = { id: number; fournisseur: string; montant: string; statut: "payee" | "impayee" };
 export type Beneficiaire = { id: number; nom: string; rib_masque: string; interne: boolean };
+/** Carte bancaire fictive : jamais le numéro complet. États : active ⇄ bloquee → opposee (définitif). */
+export type CarteBancaire = {
+  id: number;
+  numero_masque: string; // « •••• 7919 »
+  expiration: string; // « 02/29 »
+  statut: "active" | "bloquee" | "opposee";
+  motif_opposition: "perte" | "vol" | null;
+  remplacee_par: number | null; // après une opposition : l'id de la nouvelle carte
+};
 
 export type Espace = {
   profil: Profil;
@@ -11,4 +20,5 @@ export type Espace = {
   operations: Operation[];
   factures: Facture[];
   beneficiaires: Beneficiaire[];
+  cartes: CarteBancaire[];
 };

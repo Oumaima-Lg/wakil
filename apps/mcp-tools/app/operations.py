@@ -5,6 +5,7 @@ Les règles (solde, plafond, facture déjà payée) restent dans la banque : ici
 bénéficiaire et le montant. confirme=False : vérification à blanc, la banque vérifie et calcule tout, puis annule.
 """
 
+import re
 from decimal import Decimal
 from typing import Any
 
@@ -23,6 +24,7 @@ def payer_facture(
     facture_id: int | None,
     confirme: bool,
     montant: float | str | None = None,
+    cle: str | None = None,
 ) -> dict[str, Any]:
     """La facture se désigne par son identifiant (bouton du front), son fournisseur, son montant, ou les deux.
     fournisseur « toutes » : une facture par carte de confirmation ; s'il y en a plusieurs, on demande laquelle."""
@@ -59,13 +61,18 @@ def payer_facture(
             return refus("facture_absente", "Aucune facture à payer")
         facture = candidates[0]
     try:
-        return banque.payer(client_id, facture["id"], simulation=not confirme)
+        return banque.payer(client_id, facture["id"], simulation=not confirme, cle=cle)
     except banque.RefusBanque as erreur:  # solde insuffisant, facture déjà payée…
         return {"refus": erreur.detail}
 
 
 def faire_virement(
-    client_id: int, beneficiaire: str | None, montant: float | str | None, beneficiaire_id: int | None, confirme: bool
+    client_id: int,
+    beneficiaire: str | None,
+    montant: float | str | None,
+    beneficiaire_id: int | None,
+    confirme: bool,
+    cle: str | None = None,
 ) -> dict[str, Any]:
     beneficiaires = banque.beneficiaires(client_id)
     if beneficiaire_id is not None:
@@ -83,7 +90,30 @@ def faire_virement(
     if somme is None:
         return refus("montant_invalide", "Montant absent ou invalide")
     try:
-        resultat = banque.virer(client_id, candidats[0]["id"], somme, simulation=not confirme)
+        resultat = banque.virer(client_id, candidats[0]["id"], somme, simulation=not confirme, cle=cle)
     except banque.RefusBanque as erreur:  # plafond dépassé, solde insuffisant…
         return {"refus": erreur.detail}
     return {"beneficiaire_id": candidats[0]["id"], **resultat}
+
+
+def bloquer_carte(client_id: int, quatre_chiffres: str | None, carte_id: int | None, confirme: bool) -> dict[str, Any]:
+    """La carte se désigne par son identifiant (application) ou ses 4 derniers chiffres ; sinon, c'est la seule carte
+    active du client. Bloquer seulement : le déblocage et l'opposition se font dans l'espace (décision du 31/10/2026)."""
+    cartes = banque.cartes(client_id)
+    if carte_id is not None:
+        candidates = [c for c in cartes if c["id"] == carte_id]
+    elif quatre_chiffres and (chiffres := re.sub(r"\D", "", str(quatre_chiffres))[-4:]):
+        candidates = [c for c in cartes if c["numero_masque"].endswith(chiffres)]
+    else:
+        # Sans précision : la carte active ; s'il n'y en a pas, la banque dira pourquoi (déjà bloquée, en opposition).
+        candidates = [c for c in cartes if c["statut"] == "active"] or cartes
+    if not candidates:
+        return refus("carte_introuvable", "Carte introuvable")
+    if len(candidates) > 1:
+        return refus("carte_ambigue", "Plusieurs cartes : laquelle ?", cartes=[c["numero_masque"] for c in candidates])
+    carte = candidates[0]
+    try:
+        resultat = banque.bloquer_carte(client_id, carte["id"], simulation=not confirme)
+    except banque.RefusBanque as erreur:  # déjà bloquée, en opposition
+        return {"refus": erreur.detail}
+    return {"carte_id": carte["id"], **resultat}

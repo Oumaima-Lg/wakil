@@ -52,3 +52,16 @@ def depenses(
             {"categorie": categorie, "nom": CATEGORIES[categorie], "total": "0.00", "nombre": 0},
         )
     return {"periode": periode, **resume, "categorie": ligne}
+
+
+def mois_du_releve(numero: int, aujourd_hui: date) -> str:
+    """« chhar 10 » : le dernier mois d'octobre déjà commencé (cette année, ou l'an dernier si on est avant octobre)."""
+    annee = aujourd_hui.year if numero <= aujourd_hui.month else aujourd_hui.year - 1
+    return f"{annee}-{numero:02d}"
+
+
+def releve(client_id: int, numero: int, aujourd_hui: date | None = None) -> dict[str, Any]:
+    """Les opérations d'un mois, avec le résumé du relevé (soldes de début et de fin, totaux)."""
+    complet = banque.releve(client_id, mois_du_releve(numero, aujourd_hui or datetime.now(MAROC).date()))
+    resume = {cle: valeur for cle, valeur in complet.items() if cle != "transactions"}
+    return {"transactions": complet["transactions"], "releve": resume}

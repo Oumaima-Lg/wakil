@@ -134,6 +134,8 @@ def chat(message: Message, client_id: ClientConnecte, request: Request) -> Strea
                     # Son identifiant accompagne la carte : le bouton « Oui » le renverra (voir Message.carte).
                     yield evenement("confirmation", {**ajout[0].value, "carte": ajout[0].id})
                     continue
+                if not ajout:  # une case qui n'a rien changé (la carte est active : pas de mode sécurité)
+                    continue
                 outil = ajout.get("outil", outil)
                 donnees = ajout.get("resultat", donnees)
                 erreur = ajout.get("erreur", erreur)

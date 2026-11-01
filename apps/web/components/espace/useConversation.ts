@@ -21,11 +21,12 @@ export type StatutCarte =
 /** Une carte « Wach nconfirmi ? » : l'opération vérifiée à blanc par la banque, qui attend la réponse du client. */
 export type Carte = {
   carte: string; // identifiant donné par le serveur : le bouton « Oui » le renvoie, pour confirmer CETTE opération
-  type: "paiement" | "virement";
+  type: "paiement" | "virement" | "blocage";
   intro: string;
   question: string;
-  montant: string;
-  nouveau_solde: string;
+  montant?: string; // paiement et virement
+  nouveau_solde?: string;
+  numero_masque?: string; // blocage : « •••• 4821 »
   fournisseur?: string;
   beneficiaire?: string;
   beneficiaire_rib_masque?: string;

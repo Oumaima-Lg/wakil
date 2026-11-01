@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Attention, Cadenas, Coche, Echange, Etoile, Info, Recu } from "@/components/icones";
+import { Attention, Cadenas, CarteBancaire, Coche, Echange, Etoile, Info, Recu } from "@/components/icones";
 import { jour } from "@/lib/espace";
 import { dh, insecables } from "@/lib/format";
 import type { Facture, Operation } from "@/lib/types";
@@ -135,20 +135,39 @@ const LIBELLE_STATUT: Record<StatutCarte, string> = {
 };
 
 /** La carte « Wach nconfirmi ? » de la maquette : l'opération vérifiée à blanc, et les boutons tant qu'elle attend. */
-function CarteConfirmation({ carte, repondre }: { carte: Carte; repondre: (reponse: "Oui" | "Non") => void }) {
-  const paiement = carte.type === "paiement";
-  const lignes: [string, string, boolean?][] = paiement
-    ? [
+/** Ce que montre chaque type de carte : un titre, son icône, et les lignes à vérifier avant de dire « Oui ». */
+const TYPES_DE_CARTE = {
+  paiement: { titre: "Paiement de facture", Icone: Recu },
+  virement: { titre: "Virement", Icone: Echange },
+  blocage: { titre: "Blocage de carte", Icone: CarteBancaire },
+};
+
+function lignesDeLaCarte(carte: Carte): [string, string, boolean?][] {
+  switch (carte.type) {
+    case "paiement":
+      return [
         ["Fournisseur", carte.fournisseur ?? ""],
-        ["Montant", dh(carte.montant), true],
-        ["Solde après paiement", dh(carte.nouveau_solde)],
-      ]
-    : [
+        ["Montant", dh(carte.montant ?? "0"), true],
+        ["Solde après paiement", dh(carte.nouveau_solde ?? "0")],
+      ];
+    case "virement":
+      return [
         ["Bénéficiaire", carte.beneficiaire ?? ""],
         ["RIB du bénéficiaire", carte.beneficiaire_rib_masque ?? ""],
-        ["Montant", dh(carte.montant), true],
-        ["Solde après virement", dh(carte.nouveau_solde)],
+        ["Montant", dh(carte.montant ?? "0"), true],
+        ["Solde après virement", dh(carte.nouveau_solde ?? "0")],
       ];
+    case "blocage":
+      return [
+        ["Carte", carte.numero_masque ?? "", true],
+        ["Après", "bloquée, réversible dans Ma carte"],
+      ];
+  }
+}
+
+function CarteConfirmation({ carte, repondre }: { carte: Carte; repondre: (reponse: "Oui" | "Non") => void }) {
+  const { titre, Icone } = TYPES_DE_CARTE[carte.type];
+  const lignes = lignesDeLaCarte(carte);
   const attente = carte.statut === "attente";
   const eteinte = ["annulee", "remplacee", "expiree"].includes(carte.statut);
   const bordure = attente ? "border-accent" : carte.statut === "refusee" ? "border-[#8a6a2e]" : "border-bordure";
@@ -160,13 +179,13 @@ function CarteConfirmation({ carte, repondre }: { carte: Carte; repondre: (repon
         : "border-[#4a4e35] bg-surligne text-note-texte";
   return (
     <section
-      aria-label={paiement ? "Paiement de facture" : "Virement"}
+      aria-label={titre}
       className={`flex flex-col gap-3 rounded-[18px] border-[1.5px] bg-surface p-4 ${bordure} ${eteinte ? "opacity-75" : ""}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-[15px] font-semibold">
-          {paiement ? <Recu taille={18} className="text-accent" /> : <Echange taille={18} className="text-accent" />}
-          {paiement ? "Paiement de facture" : "Virement"}
+          <Icone taille={18} className="text-accent" />
+          {titre}
         </h3>
         <span className={`rounded-full border px-2.5 py-0.75 text-xs font-medium ${pastille}`}>
           {LIBELLE_STATUT[carte.statut]}
@@ -227,7 +246,10 @@ function Contenu({ message }: { message: MessageWakil }) {
         );
       }
       case "lister_transactions": {
-        const operations = message.donnees as Operation[];
+        // Les dernières opérations, ou le relevé d'un mois : { transactions, releve? } (avant : une simple liste)
+        const donnees = message.donnees as { transactions: Operation[] } | Operation[];
+        const operations = Array.isArray(donnees) ? donnees : donnees.transactions;
+        if (operations.length === 0) break; // « Ma kayna hta opération… » : le texte suffit
         return (
           <>
             <p className="mb-1.5">{intro}</p>

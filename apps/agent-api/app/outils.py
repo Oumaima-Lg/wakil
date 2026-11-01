@@ -19,6 +19,7 @@ from mcp.shared._httpx_utils import create_mcp_http_client
 MCP_TOOLS_URL = os.environ.get("MCP_TOOLS_URL", "http://127.0.0.1:8002/mcp")  # la banque
 MCP_FAQ_URL = os.environ.get("MCP_FAQ_URL", "http://127.0.0.1:8004/mcp")  # la FAQ
 CONFIRMATION = "wakil/confirmation"
+IDEMPOTENCE = "wakil/idempotence"
 
 # Chaque outil n'est accepté que de son serveur : un serveur qui annoncerait l'outil d'un autre (la FAQ qui
 # proposerait faire_virement) serait ignoré.
@@ -33,6 +34,8 @@ SERVEUR_DE = {
             "analyser_depenses",
             "payer_facture",
             "faire_virement",
+            "consulter_cartes",
+            "bloquer_carte",
         ],
         MCP_TOOLS_URL,
     ),
@@ -43,8 +46,14 @@ SERVEUR_DE = {
 REMPLIS_PAR_L_APPLICATION = {"question_faq": {"question"}}
 # Les paramètres que le LLM peut laisser vides : tous les autres lui sont présentés comme obligatoires, sinon un petit
 # modèle les oublie. Le montant d'une facture ne sert que si le client la désigne ainsi (« la facture de 249 DH ») ;
-# la catégorie des dépenses, que s'il en nomme une (« chhal srefti f restaurant »).
-OPTIONNELS_POUR_LE_LLM = {"payer_facture": {"montant"}, "analyser_depenses": {"categorie"}}
+# la catégorie des dépenses, que s'il en nomme une (« chhal srefti f restaurant ») ; le mois des opérations, que pour un
+# relevé ; les chiffres de la carte, que s'il les donne.
+OPTIONNELS_POUR_LE_LLM = {
+    "payer_facture": {"montant"},
+    "analyser_depenses": {"categorie"},
+    "lister_transactions": {"mois"},
+    "bloquer_carte": {"carte"},
+}
 
 journal = logging.getLogger(__name__)
 
@@ -70,13 +79,14 @@ def _client(url: str, client_id: int | None) -> Client:
     return Client(streamable_http_client(url, http_client=create_mcp_http_client(headers=_entetes(url, client_id))))
 
 
-def appeler(client_id: int | None, nom: str, arguments: dict, confirme: bool = False) -> dict:
+def appeler(client_id: int | None, nom: str, arguments: dict, confirme: bool = False, cle: str | None = None) -> dict:
     """Appelle un outil (tools/call) sur son serveur. confirme : le client a dit « oui » à la carte, l'opération est
-    exécutée."""
+    exécutée. cle : la clé d'idempotence de l'opération ; si l'appel est rejoué, la banque ne refait rien."""
+    meta = {CONFIRMATION: "oui", **({IDEMPOTENCE: cle} if cle else {})} if confirme else None
 
     async def faire():
         async with _client(SERVEUR_DE[nom], client_id) as client:
-            return await client.call_tool(nom, arguments, meta={CONFIRMATION: "oui"} if confirme else None)
+            return await client.call_tool(nom, arguments, meta=meta)
 
     try:
         # Le SDK MCP est asynchrone, le graphe tourne dans un fil à part : une boucle le temps de l'appel.

@@ -10,8 +10,8 @@ SALUT = "Wa 3alikom salam ! Ana Wakil, l'assistant dyal Banque Atlas Démo. Kifa
 POLITESSE = "Bla jmil ! Ila bghiti chi haja okhra, ana hna."
 # Neutre : convient au hors-sujet et à l'incompris. La liste dit tout ce que Wakil sait faire.
 REFUS = (
-    "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations, chhal srefti, "
-    "les factures, les bénéficiaires, l'virement, w les questions 3la la banque."
+    "Smeh lia, ma fhemtch wla ma n9derch ndir had l7aja. N9der n3awnek f : solde, l'opérations w l'relevé, chhal "
+    "srefti, les factures, les bénéficiaires, l'virement, l'carte, w les questions 3la la banque."
 )
 ERREUR = "Smeh lia, kayn mochkil f la banque daba. 3awed men ba3d."
 PANNE = "Smeh lia, Wakil ma khdamch daba. 3awed men ba3d."  # panne de l'agent lui-même (LLM injoignable…)
@@ -42,12 +42,25 @@ def plafond(resultat: dict) -> str:
     return f"Plafond dyalek howa {dh(resultat['plafond_virement'])} l kol virement."
 
 
-def transactions(resultat: list[dict]) -> str:
+def transactions(resultat: dict) -> str:
+    """Les dernières opérations, ou le relevé d'un mois (avec ses soldes et ses totaux, calculés par la banque)."""
     lignes = [
         f"- {datetime.fromisoformat(t['date']).astimezone(MAROC):%d/%m} · {t['libelle']} : {dh(t['montant'])}"
-        for t in resultat
+        for t in resultat["transactions"]
     ]
-    return "Hahoma akhir l'opérations dyalek :\n" + "\n".join(lignes)
+    releve = resultat.get("releve")
+    if releve is None:
+        return "Hahoma akhir l'opérations dyalek :\n" + "\n".join(lignes)
+    debut = date.fromisoformat(releve["du"])
+    mois = f"{MOIS[debut.month - 1]} {debut.year}"
+    if not lignes:
+        return f"Ma kayna hta opération f {mois}."
+    en_cours = " (chhar mazal ma salach)" if not releve["complet"] else ""
+    entete = (
+        f"Relevé dyal {mois}{en_cours} : bdit b {dh(releve['solde_ouverture'])}, dkhel {dh(releve['total_entrees'])}, "
+        f"khrej {dh(releve['total_sorties'])}, w salit b {dh(releve['solde_cloture'])}."
+    )
+    return entete + "\n" + "\n".join(lignes)
 
 
 def factures(resultat: list[dict]) -> str:
@@ -73,6 +86,33 @@ def beneficiaires(resultat: dict) -> str:
 
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre",
         "décembre"]  # fmt: skip
+
+
+def mode_securite(carte: dict) -> str:
+    """Tant que la carte est bloquée ou en opposition, Wakil ne fait rien et dit quoi faire dans l'espace."""
+    if carte["statut"] == "opposee":
+        return (
+            f"Carte dyalek {carte['numero_masque']} f opposition, l amane dyalek : ma n9derch n3awnek daba. "
+            "Commandi carte jdida f l'espace dyalek (Ma carte), w men b3d 3awed."
+        )
+    return (
+        f"Carte dyalek {carte['numero_masque']} mbloquia, l amane dyalek : ma n9derch n3awnek daba. "
+        "Debloquiha f l'espace dyalek (Ma carte), w men b3d 3awed."
+    )
+
+
+ETAT_DE_LA_CARTE = {"active": "khddama", "bloquee": "mbloquia", "opposee": "f opposition, ma b9atch khddama"}
+
+
+def cartes(resultat: list[dict]) -> str:
+    if not resultat:
+        return "Ma 3ndek hta carte."
+    lignes = [
+        f"- {c['numero_masque']} : {ETAT_DE_LA_CARTE[c['statut']]} (kat-sala f {c['expiration']})" for c in resultat
+    ]
+    if len(resultat) == 1:
+        return "3ndek carte wa7da :\n" + lignes[0]
+    return f"3ndek {len(resultat)} d les cartes :\n" + "\n".join(lignes)
 
 
 def _operations(nombre: int) -> str:
@@ -112,11 +152,24 @@ CONFIRMATION_INCOMPRISE = "Ma fhemtch jawab dyalek, donc ma dert walou. Ila bghi
 # Le client répond à une carte qui n'attend plus rien (déjà traitée, ou remplacée par une demande plus récente).
 CARTE_EXPIREE = "Had l'carte ma b9atch salha : ma dert walou. Ila bghiti, 3awed talab."
 FACTURE_INTROUVABLE = "Had l'facture ma kaynach f les factures li mazal ma tkhelsou."
-INTRO = {"paiement": "Hahiya l'facture li bghiti nkhelless :", "virement": "Hahowa l'virement li bghiti ndir :"}
-QUESTION = {"paiement": "Wach nconfirmi l'paiement ?", "virement": "Wach nconfirmi l'virement ?"}
+INTRO = {
+    "paiement": "Hahiya l'facture li bghiti nkhelless :",
+    "virement": "Hahowa l'virement li bghiti ndir :",
+    "blocage": "Hahiya l'carte li bghiti nbloqui :",
+}
+QUESTION = {
+    "paiement": "Wach nconfirmi l'paiement ?",
+    "virement": "Wach nconfirmi l'virement ?",
+    "blocage": "Wach nbloqui l'carte ?",
+}
 # Après un « oui », si la banque ne répond pas, on ne sait pas si l'opération est passée : on le dit honnêtement.
 ERREUR_OPERATION = "Smeh lia, kayn mochkil f la banque. Chouf l'opérations dyalek 9bel ma t3awed."
-ANNULEE = {"paiement": "Safi, ma tkhelless walou.", "virement": "Safi, ma tsifet walou."}
+ANNULEE = {
+    "paiement": "Safi, ma tkhelless walou.",
+    "virement": "Safi, ma tsifet walou.",
+    "blocage": "Safi, l'carte ba9a khddama.",
+}
+DEBLOCAGE = "Tqder tdebloquiha men b3d f l'espace dyalek (Ma carte)."
 
 
 def pas_de_facture(fournisseur: str) -> str:
@@ -140,6 +193,8 @@ def beneficiaire_ambigu(nom: str) -> str:
 def confirmation(operation: dict) -> str:
     """Le texte de la carte « Wach nconfirmi ? », avec les montants de la vérification à blanc."""
     type_operation = operation["type"]
+    if type_operation == "blocage":
+        return f"{INTRO['blocage']} {operation['numero_masque']}. {DEBLOCAGE}\n{QUESTION['blocage']} (Oui / La)"
     if type_operation == "paiement":
         quoi = f"{operation['fournisseur']}, {dh(operation['montant'])}"
     else:
@@ -151,6 +206,8 @@ def confirmation(operation: dict) -> str:
 
 
 def operation_faite(type_operation: str, resultat: dict) -> str:
+    if type_operation == "blocage":
+        return f"Tbloquat l'carte {resultat['numero_masque']}. {DEBLOCAGE}"
     fait = "Tkhelssat" if type_operation == "paiement" else "Tsifet"
     return f"{fait} ! Solde jdid dyalek : {dh(resultat['nouveau_solde'])}."
 
@@ -167,7 +224,7 @@ MANQUES = {
 def refus(type_operation: str, detail: dict) -> str:
     """Ce qui empêche l'opération, expliqué au client : il manque quelque chose à la demande (serveur MCP), ou la
     banque refuse, avec ses propres chiffres (codes et montants : voir bank-api)."""
-    quoi = "l'paiement" if type_operation == "paiement" else "l'virement"
+    quoi = {"paiement": "l'paiement", "virement": "l'virement", "blocage": "l'blocage"}[type_operation]
     code = detail.get("code")
     if code in MANQUES:
         return MANQUES[code]
@@ -199,4 +256,12 @@ def refus(type_operation: str, detail: dict) -> str:
         return "Had l'facture deja tkhelsat."
     if code == "virement_vers_soi":
         return "Ma n9derch ndir virement l compte dyalek."
+    if code == "carte_deja_bloquee":
+        return f"L'carte deja mbloquia. {DEBLOCAGE}"
+    if code == "carte_en_opposition":
+        return "Had l'carte f opposition : ma b9atch khddama, ma khasshach tbloqua."
+    if code == "carte_ambigue":
+        return f"3ndek ktar men carte ({', '.join(detail['cartes'])}). Chmen wa7da nbloqui ? 3tini akhir 4 d l'ar9am."
+    if code == "carte_introuvable":
+        return "Ma l9itch had l'carte f les cartes dyalek."
     return f"Smeh lia, l'banque rfdat {quoi}."
