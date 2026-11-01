@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from psycopg.types.json import Jsonb
 
 from app.db import Connexion
+from app.idempotence import CleIdempotence, deja_faite, retenir
 from app.operations import Simulation, refus
 from app.schemas import DemandeVirement, Virement, masquer_rib
 from app.securite import ClientConnecte
@@ -14,7 +15,11 @@ router = APIRouter(tags=["Virements"])
 
 @router.post("/virements")
 def faire_virement(
-    demande: DemandeVirement, client_id: ClientConnecte, conn: Connexion, simulation: Simulation = False
+    demande: DemandeVirement,
+    client_id: ClientConnecte,
+    conn: Connexion,
+    simulation: Simulation = False,
+    cle: CleIdempotence = None,
 ) -> Virement:
     """Vire de l'argent du compte du client connecté vers un de ses bénéficiaires.
 
@@ -22,8 +27,13 @@ def faire_virement(
     il ne dépasse ni le plafond de virement ni le solde.
     Effets, tous ensemble ou aucun : débit, crédit du compte du bénéficiaire, transactions, ligne d'audit.
     Avec ?simulation=true : tout est vérifié et calculé, puis annulé (vérification à blanc avant la confirmation).
+    Avec un en-tête Idempotency-Key : rejouer la même demande renvoie la même réponse, sans virer deux fois.
     """
     with conn.transaction():
+        idempotent = cle is not None and not simulation  # une vérification à blanc ne change rien : pas de clé
+        corps = demande.model_dump(mode="json")
+        if idempotent and (deja := deja_faite(conn, client_id, cle, "POST /virements", corps)):
+            return Virement(**deja)
         beneficiaire = conn.execute(
             "SELECT nom, rib FROM beneficiaires WHERE id = %s AND client_id = %s",
             (demande.beneficiaire_id, client_id),
@@ -92,13 +102,16 @@ def faire_virement(
                 ),
             ),
         )
+        virement = Virement(
+            beneficiaire=beneficiaire["nom"],
+            beneficiaire_rib_masque=masquer_rib(beneficiaire["rib"]),
+            montant=demande.montant,
+            nouveau_solde=nouveau_solde,
+            simulation=simulation,
+        )
         if simulation:
             raise psycopg.Rollback()  # vérification à blanc : tout le bloc est annulé (voir factures.py)
+        if idempotent:
+            retenir(conn, client_id, cle, virement.model_dump(mode="json"))
 
-    return Virement(
-        beneficiaire=beneficiaire["nom"],
-        beneficiaire_rib_masque=masquer_rib(beneficiaire["rib"]),
-        montant=demande.montant,
-        nouveau_solde=nouveau_solde,
-        simulation=simulation,
-    )
+    return virement

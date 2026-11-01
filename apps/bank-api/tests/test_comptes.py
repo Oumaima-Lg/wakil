@@ -1,6 +1,10 @@
 """Tests des routes des comptes."""
 
 from datetime import datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+import pytest
 
 SALMA = {"X-Client-Id": "1"}
 YOUSSEF = {"X-Client-Id": "2"}
@@ -99,3 +103,90 @@ def test_depenses_dates_inversees_refusees(api):
 def test_depenses_du_compte_d_un_autre_client_introuvables(api):
     reponse = api.get("/comptes/1/depenses?du=2020-01-01&au=2020-01-31", headers=YOUSSEF)
     assert reponse.status_code == 404
+
+
+# --- Opérations filtrées, page par page, détail et relevé -----------------------------------------------------------
+
+JANVIER_2020 = [
+    ("2020-01-03 10:00", "-40.00", "Café"),
+    ("2020-01-08 12:00", "-120.00", "Restaurant"),
+    ("2020-01-15 09:00", "5000.00", "Salaire (démo)"),
+    ("2020-01-20 18:00", "-300.00", "Courses supermarché"),
+    ("2020-01-28 08:00", "-60.00", "Taxi"),
+]
+
+
+def lien_suivant(reponse) -> str | None:
+    """L'adresse de la page suivante, lue dans l'en-tête Link (<…>; rel="next")."""
+    lien = reponse.headers.get("link")
+    return lien.split(";")[0].strip("<> ") if lien else None
+
+
+def test_operations_entre_deux_dates(api, conn):
+    ajouter_operations(conn, 1, JANVIER_2020)
+
+    reponse = api.get("/comptes/1/transactions?du=2020-01-05&au=2020-01-25&limite=50", headers=SALMA)
+
+    assert [t["libelle"] for t in reponse.json()] == ["Courses supermarché", "Salaire (démo)", "Restaurant"]
+
+
+def test_operations_page_par_page_sans_rien_sauter_ni_repeter(api, conn):
+    ajouter_operations(conn, 1, JANVIER_2020)
+    adresse, lues, pages = "/comptes/1/transactions?du=2020-01-01&au=2020-01-31&limite=2", [], 0
+
+    while adresse:
+        reponse = api.get(adresse, headers=SALMA)
+        lues += [t["libelle"] for t in reponse.json()]
+        adresse, pages = lien_suivant(reponse), pages + 1
+
+    assert pages == 3  # 2 + 2 + 1 ; la dernière page n'a pas d'en-tête Link
+    assert lues == ["Taxi", "Courses supermarché", "Salaire (démo)", "Restaurant", "Café"]
+
+
+def test_un_curseur_invalide_est_refuse(api):
+    assert api.get("/comptes/1/transactions?curseur=nimporte-quoi", headers=SALMA).status_code == 422
+
+
+def test_detail_d_une_operation(api, conn):
+    operation = api.get("/comptes/1/transactions?limite=1", headers=SALMA).json()[0]
+
+    assert api.get(f"/comptes/1/transactions/{operation['id']}", headers=SALMA).json() == operation
+
+
+def test_detail_d_une_operation_d_un_autre_compte_introuvable(api, conn):
+    autre = conn.execute("SELECT id FROM transactions WHERE compte_id = 2 LIMIT 1").fetchone()["id"]
+
+    assert api.get(f"/comptes/1/transactions/{autre}", headers=SALMA).status_code == 404
+    assert api.get(f"/comptes/1/transactions/{autre}", headers=YOUSSEF).status_code == 404
+
+
+def test_releve_mensuel_qui_tombe_juste(api, conn):
+    ajouter_operations(conn, 1, JANVIER_2020)
+
+    releve = api.get("/comptes/1/releves/2020-01", headers=SALMA).json()
+
+    assert [t["libelle"] for t in releve["transactions"]] == [libelle for _, _, libelle in JANVIER_2020]  # dans l'ordre
+    assert (releve["du"], releve["au"], releve["complet"]) == ("2020-01-01", "2020-01-31", True)
+    assert (releve["total_entrees"], releve["total_sorties"]) == ("5000.00", "520.00")
+    ouverture, cloture = Decimal(releve["solde_ouverture"]), Decimal(releve["solde_cloture"])
+    assert ouverture + Decimal("5000.00") - Decimal("520.00") == cloture
+    # Fin janvier 2020 = solde actuel moins tout ce qui s'est passé depuis
+    depuis = conn.execute(
+        "SELECT coalesce(sum(montant), 0) AS s FROM transactions WHERE compte_id = 1 AND date >= '2020-02-01 Africa/Casablanca'"
+    ).fetchone()["s"]
+    assert cloture == Decimal("2350.00") - depuis
+
+
+def test_releve_du_mois_en_cours_pas_encore_complet(api):
+    mois = datetime.now(ZoneInfo("Africa/Casablanca")).strftime("%Y-%m")
+
+    assert api.get(f"/comptes/1/releves/{mois}", headers=SALMA).json()["complet"] is False
+
+
+@pytest.mark.parametrize(("mois", "code"), [("2999-01", 404), ("2020-13", 422), ("janvier", 422)])
+def test_releve_d_un_mois_futur_ou_mal_ecrit(api, mois, code):
+    assert api.get(f"/comptes/1/releves/{mois}", headers=SALMA).status_code == code
+
+
+def test_releve_du_compte_d_un_autre_client_introuvable(api):
+    assert api.get("/comptes/1/releves/2020-01", headers=YOUSSEF).status_code == 404

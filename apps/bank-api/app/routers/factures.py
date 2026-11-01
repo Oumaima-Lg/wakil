@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from psycopg.types.json import Jsonb
 
 from app.db import Connexion
+from app.idempotence import CleIdempotence, deja_faite, retenir
 from app.operations import Simulation, refus
 from app.schemas import Facture, Paiement
 from app.securite import ClientConnecte
@@ -24,16 +25,24 @@ def lister_factures(id_client: int, client_id: ClientConnecte, conn: Connexion) 
 
 @router.post("/factures/{facture_id}/payer")
 def payer_facture(
-    facture_id: int, client_id: ClientConnecte, conn: Connexion, simulation: Simulation = False
+    facture_id: int,
+    client_id: ClientConnecte,
+    conn: Connexion,
+    simulation: Simulation = False,
+    cle: CleIdempotence = None,
 ) -> Paiement:
     """Paye une facture avec le compte du client connecté.
 
     Règles : la facture appartient au client, elle est impayée, le solde est suffisant.
     Effets, tous ensemble ou aucun : débit du compte, transaction, statut « payee », ligne d'audit.
     Avec ?simulation=true : tout est vérifié et calculé, puis annulé (vérification à blanc avant la confirmation).
+    Avec un en-tête Idempotency-Key : rejouer la même demande renvoie la même réponse, sans payer deux fois.
     """
     # Comme @Transactional : tout le bloc est validé ensemble (COMMIT), ou tout est annulé (ROLLBACK).
     with conn.transaction():
+        idempotent = cle is not None and not simulation  # une vérification à blanc ne change rien : pas de clé
+        if idempotent and (deja := deja_faite(conn, client_id, cle, f"POST /factures/{facture_id}/payer", {})):
+            return Paiement(**deja)
         # FOR UPDATE verrouille la facture jusqu'à la fin du bloc : si deux demandes de paiement
         # arrivent en même temps, la seconde attend, puis voit « payee » et est refusée.
         facture = conn.execute(
@@ -69,15 +78,18 @@ def payer_facture(
                 Jsonb({"facture_id": facture_id, "compte_id": compte["id"], "montant": str(facture["montant"])}),
             ),
         )
+        paiement = Paiement(
+            facture_id=facture_id,
+            fournisseur=facture["fournisseur"],
+            montant=facture["montant"],
+            nouveau_solde=nouveau_solde,
+            simulation=simulation,
+        )
         if simulation:
             # Vérification à blanc : on annule tout le bloc (débit, statut, transaction, audit). psycopg.Rollback
             # fait un ROLLBACK puis sort du « with » sans erreur ; nouveau_solde garde la valeur calculée par la base.
             raise psycopg.Rollback()
+        if idempotent:
+            retenir(conn, client_id, cle, paiement.model_dump(mode="json"))
 
-    return Paiement(
-        facture_id=facture_id,
-        fournisseur=facture["fournisseur"],
-        montant=facture["montant"],
-        nouveau_solde=nouveau_solde,
-        simulation=simulation,
-    )
+    return paiement

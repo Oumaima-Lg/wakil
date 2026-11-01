@@ -26,6 +26,28 @@ class Compte(BaseModel):
     plafond_virement: Decimal
 
 
+class EntreeAudit(BaseModel):
+    """Une ligne du journal, lisible par le client : ce qui a été fait sur son compte, et quand."""
+
+    date: datetime
+    action: str  # code : paiement_facture, virement, carte_bloquee…
+    libelle: str  # « Paiement de la facture Internet (démo) »
+    montant: Decimal | None  # positif ; absent pour une action sur une carte
+
+
+class Carte(BaseModel):
+    id: int
+    numero_masque: str  # « •••• 4821 » : fictif, jamais le numéro complet
+    expiration: str  # « 09/29 »
+    statut: Literal["active", "bloquee", "opposee"]
+    motif_opposition: Literal["perte", "vol"] | None
+    remplacee_par: int | None = None  # après une opposition : l'id de la nouvelle carte
+
+
+class DemandeOpposition(BaseModel):
+    motif: Literal["perte", "vol"]
+
+
 class Solde(BaseModel):
     compte_id: int
     solde: Decimal  # Decimal, jamais float : envoyé en JSON sous forme de texte exact, « "2350.00" »
@@ -56,6 +78,22 @@ class Depenses(BaseModel):
     nombre: int  # nombre d'opérations (sorties et entrées)
     par_categorie: list[DepensesCategorie]  # les sorties, de la plus grosse catégorie à la plus petite
     plus_grosse: Transaction | None  # la plus grosse sortie
+
+
+class Releve(BaseModel):
+    """Le relevé d'un mois : solde au début, toutes les opérations dans l'ordre, solde à la fin.
+
+    Toujours vrai : solde_ouverture + total_entrees - total_sorties = solde_cloture."""
+
+    mois: str  # « 2026-09 »
+    du: date
+    au: date
+    complet: bool  # faux pour le mois en cours : d'autres opérations peuvent encore arriver
+    solde_ouverture: Decimal
+    total_entrees: Decimal
+    total_sorties: Decimal  # positif
+    solde_cloture: Decimal
+    transactions: list[Transaction]  # de la plus ancienne à la plus récente, comme sur un relevé papier
 
 
 class Facture(BaseModel):

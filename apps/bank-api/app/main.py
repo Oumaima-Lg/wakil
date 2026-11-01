@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import pool
-from app.routers import clients, comptes, factures, virements
+from app.routers import cartes, clients, comptes, factures, virements
 
 
 @asynccontextmanager
@@ -29,3 +29,4 @@ app.include_router(clients.router)
 app.include_router(comptes.router)
 app.include_router(factures.router)
 app.include_router(virements.router)
+app.include_router(cartes.router)

@@ -34,3 +34,15 @@ def conn(client_http):
 @pytest.fixture
 def api(client_http, conn):
     return client_http
+
+
+@pytest.fixture
+def carte_neuve(conn):
+    """Une seule carte, active, pour Salma, quoi qu'on ait fait dans la démo (blocage, opposition, remplacement) :
+    remise à neuf dans la transaction du test, annulée à la fin. Les données de la démo ne sont pas touchées."""
+    conn.execute("UPDATE cartes SET remplacee_par = NULL WHERE client_id = 1")
+    conn.execute("DELETE FROM cartes WHERE client_id = 1")
+    return conn.execute(
+        "INSERT INTO cartes (client_id, compte_id, numero_masque, expiration)"
+        " SELECT client_id, id, '•••• 7919', '02/29' FROM comptes WHERE client_id = 1 RETURNING id"
+    ).fetchone()["id"]

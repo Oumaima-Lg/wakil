@@ -12,12 +12,14 @@ import os
 import random
 from datetime import datetime, time
 from decimal import Decimal
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import psycopg
 from faker import Faker
 
 GRAINE = 2026  # même graine = mêmes données à chaque lancement
+RACINE = Path(__file__).resolve().parents[2]
 NB_CLIENTS = 200
 NB_TRANSACTIONS = 20
 MAROC = ZoneInfo("Africa/Casablanca")
@@ -234,7 +236,9 @@ with psycopg.connect(
     password=os.environ["POSTGRES_PASSWORD"],
     dbname=os.environ["POSTGRES_DB"],
 ) as conn:
-    conn.execute("TRUNCATE clients, comptes, transactions, factures, beneficiaires, audit RESTART IDENTITY")
+    conn.execute(
+        "TRUNCATE clients, comptes, transactions, factures, beneficiaires, audit, idempotence, cartes RESTART IDENTITY"
+    )
 
     clients = [creer_client(conn, c) for c in DEMO]
     clients += [creer_client(conn, client_aleatoire()) for _ in range(NB_CLIENTS - len(DEMO))]
@@ -246,6 +250,8 @@ with psycopg.connect(
         for _, nom_complet, rib in random.sample(autres, random.randint(1, 3)):
             beneficiaires.append((client_id, nom_complet, rib))
     conn.cursor().executemany("INSERT INTO beneficiaires (client_id, nom, rib) VALUES (%s, %s, %s)", beneficiaires)
+    # Une carte fictive par compte, sans hasard (la suite des tirages aléatoires ne change pas).
+    conn.execute((RACINE / "apps" / "bank-api" / "cartes.sql").read_text())
 
     totaux = conn.execute(
         """SELECT (SELECT count(*) FROM clients), (SELECT count(*) FROM comptes),
