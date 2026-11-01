@@ -6,6 +6,7 @@ ses questions ont déjà servi à régler Wakil, son score est donc optimiste. L
 
 import json
 import math
+import os
 import statistics
 from collections import defaultdict
 from datetime import date
@@ -39,6 +40,7 @@ def lire() -> dict[str, list[dict]]:
                     "question": v["question"],
                     "paquet": v["paquet"],
                     "ecriture": v["ecriture"],
+                    "source": v.get("source", ""),
                     "categorie": v["categorie"],
                     "bon_outil": r.get("namedScores", {}).get("bon_outil", 0) == 1,
                     "reussi": bool(r["success"]),
@@ -85,6 +87,20 @@ def tableau_par(par_modele: dict[str, list[dict]], cle: str, valeurs: list[str])
     return lignes
 
 
+def tableau_auteurs(par_modele: dict[str, list[dict]]) -> list[str]:
+    """Paquet test : les questions écrites par Oumaima et les questions générées (relues), à part. Un écart montre
+    que des questions générées ne ressemblent pas à celles de vrais clients."""
+    auteurs = {"oumaima": "écrites par Oumaima", "generees": "générées, relues par Oumaima"}
+    lignes = ["| Modèle | " + " | ".join(auteurs.values()) + " |", "|---|" + "---|" * len(auteurs)]
+    for modele, reponses in par_modele.items():
+        cellules = []
+        for source in auteurs:
+            groupe = [r for r in reponses if r["paquet"] == "test" and r["source"] == source]
+            cellules.append(pourcent(sum(r["reussi"] for r in groupe), len(groupe)))
+        lignes.append(f"| `{modele}` | " + " | ".join(cellules) + " |")
+    return lignes
+
+
 def mcnemar(gagnes: int, perdus: int) -> float:
     """Probabilité d'un écart au moins aussi grand si les deux modèles se valaient (test exact, bilatéral)."""
     n = gagnes + perdus
@@ -126,6 +142,9 @@ def main() -> None:
         f"**Les questions** : {nb_test} jamais vues (paquet « test », qui donne la note) et {nb_reglage} déjà utilisées "
         "pour régler Wakil (paquet « mise au point », score optimiste, donné à part).",
         "",
+        f"**La machine** : {os.environ.get('BENCHMARK_MACHINE', 'non précisée')}. Les temps de réponse en dépendent ; "
+        "les modèles comparés sont toujours mesurés sur la même machine.",
+        "",
         "## Classement",
         "",
         *tableau_global(par_modele),
@@ -136,6 +155,10 @@ def main() -> None:
         "probablement pas dû au hasard.",
         "",
         *tableau_paires(par_modele),
+        "",
+        "## Par auteur des questions (paquet test)",
+        "",
+        *tableau_auteurs(par_modele),
         "",
         "## Par écriture (tous paquets)",
         "",
