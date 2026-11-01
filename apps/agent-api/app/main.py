@@ -17,10 +17,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import agent, reponses
+from app import agent, outils, reponses
 from app.agent import carte_en_attente, config, prochaine_entree
 from app.memoire import base_configuree, memoire_postgres, pool_agent
-from app.session import ClientConnecte
+from app.quota import ClientDansLeQuota
+from app.session import COOKIE
 
 journal = logging.getLogger(__name__)
 
@@ -74,16 +75,19 @@ def evenement(nom: str, donnees: dict) -> str:
 
 
 @app.post("/chat")
-def chat(message: Message, client_id: ClientConnecte, request: Request) -> StreamingResponse:
+def chat(message: Message, client_id: ClientDansLeQuota, request: Request) -> StreamingResponse:
     """Envoie un message à Wakil ; la réponse arrive en flux SSE, case par case.
 
-    Le client vient du jeton signé de la session, jamais du corps de la requête ni du LLM. Si une opération attend
-    « Wach nconfirmi ? », le message est la réponse du client ; sinon, c'est une nouvelle demande.
+    Le client vient du jeton signé de la session, jamais du corps de la requête ni du LLM ; ce jeton est relayé au
+    serveur MCP de la banque, qui le vérifie à son tour. Au-delà du quota de messages : 429 (voir quota.py). Si une opération attend « Wach nconfirmi ? », le message est
+    la réponse du client ; sinon, c'est une nouvelle demande.
     """
     wakil = request.app.state.wakil
+    jeton = request.cookies[COOKIE]  # déjà vérifié avec la session (ClientDansLeQuota)
 
     def travailler(file: queue.Queue) -> None:
         """Fait tourner le graphe dans un fil à part et dépose chaque étape dans la file, puis « fin »."""
+        outils.JETON_DU_CLIENT.set(jeton)  # pour ce fil et les cases du graphe qu'il lance
         try:
             conf = config(client_id, message.conversation_id)
             if message.carte is not None and message.carte != carte_en_attente(wakil, conf):

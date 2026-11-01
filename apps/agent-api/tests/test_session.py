@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from app import agent, reponses
+from app import agent, outils, reponses
 from app.session import COOKIE
 from tests.jetons import CLE_PUBLIQUE, jeton
 
@@ -97,6 +97,21 @@ def test_l_en_tete_x_client_id_est_ignore(salma, faux_llm, monkeypatch):
     salma.post("/chat", headers={"X-Client-Id": "2"}, json={**MESSAGE, "conversation_id": str(uuid.uuid4())})
 
     assert clients_appeles == [1]  # c'est bien Salma (le jeton), pas Youssef (l'en-tête)
+
+
+def test_le_jeton_relaye_aux_outils_est_celui_de_la_session(salma, faux_llm, monkeypatch):
+    relayes = []
+
+    def fausse_banque(client_id, arguments=None):
+        relayes.append(outils.JETON_DU_CLIENT.get())  # ce qu'outils.appeler mettrait dans l'en-tête Authorization
+        return {"solde": "2350.00"}
+
+    faux_llm("consulter_solde")
+    monkeypatch.setitem(agent.OUTILS, "consulter_solde", (fausse_banque, reponses.solde))
+
+    salma.post("/chat", json={**MESSAGE, "conversation_id": str(uuid.uuid4())})
+
+    assert relayes == [salma.cookies[COOKIE]]
 
 
 def test_les_routes_du_portail_ne_sont_pas_ici(salma):

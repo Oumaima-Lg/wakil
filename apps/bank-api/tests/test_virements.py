@@ -3,10 +3,11 @@
 from decimal import Decimal
 
 import pytest
+from conftest import entetes
 
-SALMA = {"X-Client-Id": "1"}
-YOUSSEF = {"X-Client-Id": "2"}
-NADIA = {"X-Client-Id": "3"}
+SALMA = entetes(1)
+YOUSSEF = entetes(2)
+NADIA = entetes(3)
 
 
 def nombre_d_audits(conn):

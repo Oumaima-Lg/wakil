@@ -2,23 +2,25 @@
 carte (bloquer, débloquer, faire opposition, commander une nouvelle carte).
 
 Équivalent Spring : un RestClient (ou un client Feign). L'IA, elle, ne passe jamais par ici : ses outils sont dans le
-serveur MCP (apps/mcp-tools). Chaque fonction reçoit le client_id de la session.
+serveur MCP (apps/mcp-tools). Chaque fonction reçoit le client_id de la session ; bank-api reçoit un jeton de 60
+secondes signé par portail-api pour ce client (voir session.jeton_pour_la_banque).
 """
 
 import os
 
 import httpx
 
+from app.session import jeton_pour_la_banque
+
 BANK_API_URL = os.environ.get("BANK_API_URL", "http://127.0.0.1:8000")
 
 
+def _entetes(client_id: int) -> dict[str, str]:
+    return {"Authorization": f"Bearer {jeton_pour_la_banque(client_id)}"}
+
+
 def _get(client_id: int, chemin: str, **params):
-    reponse = httpx.get(
-        f"{BANK_API_URL}{chemin}",
-        params=params,
-        headers={"X-Client-Id": str(client_id)},
-        timeout=10,
-    )
+    reponse = httpx.get(f"{BANK_API_URL}{chemin}", params=params, headers=_entetes(client_id), timeout=10)
     reponse.raise_for_status()  # une erreur 4xx ou 5xx devient une exception
     return reponse.json()
 
@@ -32,7 +34,7 @@ class RefusBanque(Exception):
 
 
 def _post(client_id: int, chemin: str, json: dict | None = None) -> dict:
-    reponse = httpx.post(f"{BANK_API_URL}{chemin}", json=json, headers={"X-Client-Id": str(client_id)}, timeout=10)
+    reponse = httpx.post(f"{BANK_API_URL}{chemin}", json=json, headers=_entetes(client_id), timeout=10)
     if reponse.status_code in (404, 409):
         raise RefusBanque(reponse.status_code, reponse.json()["detail"])
     reponse.raise_for_status()

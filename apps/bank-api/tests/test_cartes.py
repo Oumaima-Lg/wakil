@@ -3,9 +3,10 @@
 import re
 
 import pytest
+from conftest import entetes
 
-SALMA = {"X-Client-Id": "1"}
-YOUSSEF = {"X-Client-Id": "2"}
+SALMA = entetes(1)
+YOUSSEF = entetes(2)
 
 
 @pytest.fixture(autouse=True)

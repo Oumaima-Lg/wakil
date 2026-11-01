@@ -15,6 +15,7 @@ REFUS = (
 )
 ERREUR = "Smeh lia, kayn mochkil f la banque daba. 3awed men ba3d."
 PANNE = "Smeh lia, Wakil ma khdamch daba. 3awed men ba3d."  # panne de l'agent lui-même (LLM injoignable…)
+TROP_DE_MESSAGES = "Smeh lia, sifti bzaf dyal les messages f d9i9a. Tsenna chwiya w 3awed."  # quota (429)
 
 # FAQ : le texte de la fiche est cité tel quel (voir apps/rag-faq) ; seule l'introduction est en darija.
 FAQ_INTROUVABLE = (

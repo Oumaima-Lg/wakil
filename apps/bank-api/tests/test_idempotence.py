@@ -1,7 +1,9 @@
 """Tests de l'idempotence : rejouer une opération avec la même clé ne la refait jamais."""
 
-SALMA = {"X-Client-Id": "1"}
-YOUSSEF = {"X-Client-Id": "2"}
+from conftest import entetes
+
+SALMA = entetes(1)
+YOUSSEF = entetes(2)
 EAU = "Eau & Électricité (démo)"
 
 

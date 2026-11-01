@@ -3,18 +3,23 @@
 - apps/mcp-tools : les outils de la banque (solde, opérations, factures, paiement, virement) ;
 - apps/rag-faq : la FAQ (question_faq), qui retrouve la fiche qui répond.
 
-Le client voyage dans l'en-tête X-Client-Id (jamais dans les arguments, que le LLM pourrait choisir), et seulement vers
-le serveur de la banque : la FAQ est publique et n'a pas à savoir qui demande. La confirmation du client voyage dans le
+Le client est prouvé par son jeton de session (signé par portail-api), qu'agent-api relaie au serveur de la banque
+dans l'en-tête Authorization ; jamais par les arguments, que le LLM pourrait choisir. Seulement à ce serveur : la FAQ
+est publique et n'a pas à savoir qui demande. La confirmation du client voyage dans le
 _meta de l'appel : sans elle, le serveur de la banque ne fait qu'une vérification à blanc.
 """
 
 import asyncio
 import logging
 import os
+from contextvars import ContextVar
 
+import jwt
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
+
+from app import session
 
 MCP_TOOLS_URL = os.environ.get("MCP_TOOLS_URL", "http://127.0.0.1:8002/mcp")  # la banque
 MCP_FAQ_URL = os.environ.get("MCP_FAQ_URL", "http://127.0.0.1:8004/mcp")  # la FAQ
@@ -57,6 +62,11 @@ OPTIONNELS_POUR_LE_LLM = {
 
 journal = logging.getLogger(__name__)
 
+# Le jeton de session du client, posé par /chat pour le tour en cours. Une variable de contexte suit le tour dans les
+# fils du graphe et n'est jamais rangée dans la mémoire PostgreSQL, contrairement à l'état du graphe : le jeton n'est
+# écrit nulle part.
+JETON_DU_CLIENT: ContextVar[str | None] = ContextVar("jeton_du_client", default=None)
+
 
 class RefusOutil(Exception):
     """Le serveur (ou la banque derrière lui) refuse : detail = {"code", "message", …} (facture absente, solde…)."""
@@ -71,8 +81,17 @@ class OutilsIndisponibles(Exception):
 
 
 def _entetes(url: str, client_id: int | None) -> dict[str, str]:
-    """Le client n'est dit qu'au serveur de la banque (minimisation des données)."""
-    return {"X-Client-Id": str(client_id)} if url == MCP_TOOLS_URL and client_id is not None else {}
+    """Le jeton n'est relayé qu'au serveur de la banque (minimisation des données), et seulement s'il est celui du
+    client de la conversation : un mélange entre deux conversations ne peut pas agir sur le mauvais compte."""
+    if url != MCP_TOOLS_URL or client_id is None:
+        return {}
+    jeton = JETON_DU_CLIENT.get()
+    try:
+        if jeton is None or session.client_du_jeton(jeton) != client_id:
+            raise OutilsIndisponibles("Aucun jeton de session valable pour ce client")
+    except jwt.InvalidTokenError:
+        raise OutilsIndisponibles("Jeton de session invalide ou expiré") from None
+    return {"Authorization": f"Bearer {jeton}"}
 
 
 def _client(url: str, client_id: int | None) -> Client:

@@ -5,9 +5,10 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
+from conftest import entetes
 
-SALMA = {"X-Client-Id": "1"}
-YOUSSEF = {"X-Client-Id": "2"}
+SALMA = entetes(1)
+YOUSSEF = entetes(2)
 
 
 def test_solde_de_son_propre_compte(api):
@@ -23,7 +24,7 @@ def test_solde_du_compte_d_un_autre_client_est_introuvable(api):
 
 def test_solde_sans_client_connecte_est_refuse(api):
     reponse = api.get("/comptes/1/solde")
-    assert reponse.status_code == 422  # en-tête X-Client-Id manquant
+    assert reponse.status_code == 401  # aucun jeton
 
 
 def test_transactions_les_plus_recentes_d_abord(api):

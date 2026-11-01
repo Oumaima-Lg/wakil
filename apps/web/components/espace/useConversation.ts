@@ -116,8 +116,8 @@ export function useConversation() {
       const panne = { auteur: "wakil", texte: PANNE, outil: null, donnees: null, erreur: true, demande } as const;
       // Si la réponse à une carte n'a pas pu partir, la carte redevient cliquable. Sans risque : le serveur
       // n'accepte un « Oui » que pour la carte qui attend vraiment, donc jamais deux fois le même paiement.
-      const signalerPanne = () => {
-        ajouter(panne);
+      const signalerPanne = (texte: string = PANNE) => {
+        ajouter({ ...panne, texte });
         if (demande.carte) changerCartes((c) => c.carte === demande.carte && c.statut === "envoyee", "attente");
       };
       try {
@@ -129,6 +129,12 @@ export function useConversation() {
         });
         if (reponse.status === 401) {
           setSessionExpiree(true); // session de 30 minutes terminée
+          return;
+        }
+        if (reponse.status === 429) {
+          // trop de messages en une minute : la phrase du serveur dit d'attendre, « Réessayer » reste possible
+          const detail = (await reponse.json().catch(() => null))?.detail;
+          signalerPanne(typeof detail === "string" ? detail : PANNE);
           return;
         }
         if (!reponse.ok || !reponse.body) {

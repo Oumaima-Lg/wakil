@@ -97,8 +97,10 @@ Prérequis : [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.as
 #    par exemple : python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 cp .env.example .env
 
-# 2. Les clés des jetons de session (RS256), ajoutées à la fin de .env (jamais commitées)
+# 2. Les clés des jetons (RS256), ajoutées à la fin de .env (jamais commitées) : celles des sessions (portail-api),
+#    puis celles des jetons courts de mcp-tools vers bank-api (voir docs/adr/0004-jetons-entre-services.md)
 (cd apps/portail-api && uv run python -m app.cles >> ../../.env)
+(cd apps/mcp-tools && uv run python -m app.jetons >> ../../.env)
 
 # 3. Les modèles (langue : environ 2,5 Go ; embeddings : environ 1,2 Go), la base de données, les données fictives,
 #    l'index de la FAQ et les paquets du site

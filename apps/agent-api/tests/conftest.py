@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
-from app import agent
+from app import agent, quota
 from app.main import app
 from app.session import COOKIE
 from tests.jetons import CLE_PUBLIQUE, jeton
@@ -16,6 +16,12 @@ from tests.jetons import CLE_PUBLIQUE, jeton
 def carte_active(monkeypatch):
     """Par défaut, la carte du client est active : pas de mode sécurité, et aucun appel au vrai serveur MCP."""
     monkeypatch.setattr(agent, "carte_qui_bloque", lambda client_id: None)
+
+
+@pytest.fixture(autouse=True)
+def quota_neuf(monkeypatch):
+    """Chaque test part d'un quota vide : les messages d'un test ne comptent pas pour le suivant."""
+    monkeypatch.setattr(quota, "quota", quota.Quota(20))
 
 
 @pytest.fixture(autouse=True)

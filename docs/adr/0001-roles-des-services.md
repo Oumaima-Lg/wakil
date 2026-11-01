@@ -42,10 +42,10 @@ Ce qui guide la découpe :
 - Un seul chemin de l'IA vers la banque : `agent-api` → `mcp-tools` → `bank-api`. Le rapport de sécurité (S5) n'a qu'une porte à attaquer et à mesurer.
 - Si `agent-api` était compromis, l'attaquant ne pourrait ni créer de session pour un autre client, ni appeler la banque sans passer par les outils et leur confirmation.
 - Un service de plus à lancer en local : un `Procfile` et la commande `uvx honcho start` lancent les six. En S6, ce sera aussi une Container App de plus, en `minReplicas=0`, donc sans coût quand elle ne sert pas.
-- La vérification du jeton est écrite deux fois (une vingtaine de lignes dans `portail-api` et `agent-api`). C'est accepté plutôt que de créer une bibliothèque partagée.
+- La vérification du jeton est écrite dans chaque service qui en reçoit un (une vingtaine de lignes dans `portail-api`, `agent-api`, puis `mcp-tools` et `bank-api` depuis l'ADR 0004). C'est accepté plutôt que de créer une bibliothèque partagée.
 - **Limites connues** :
   - En local, les deux clés sont dans le même `.env`. La vraie séparation viendra en S6 : chaque Container App ne recevra de Key Vault que la clé dont elle a besoin.
-  - `bank-api` croit encore l'en-tête `X-Client-Id`. En S5, il vérifiera un jeton court et signé ; en S6, il ne sera joignable que de l'intérieur.
+  - `bank-api` croyait l'en-tête `X-Client-Id`. Depuis le 01/11/2026, il vérifie un jeton court et signé (ADR 0004) ; en S6, il ne sera joignable que de l'intérieur.
 
 ## Alternatives écartées
 

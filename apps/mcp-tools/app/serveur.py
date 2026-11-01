@@ -6,12 +6,12 @@ déroulé d'un paiement ou d'un virement est dans operations.py.
 Lancer (depuis apps/mcp-tools, bank-api démarrée) : uv run --env-file ../../.env uvicorn app.serveur:app --port 8002
 Voir les outils dans l'inspecteur MCP officiel (télécharge un paquet Node) :
   uv run --with "mcp[cli]" mcp dev app/serveur.py:serveur
-L'inspecteur passe alors par stdio, sans en-tête HTTP : il liste les outils, mais les appeler répond « l'en-tête
-X-Client-Id manque ». Pour les appeler, s'y connecter en HTTP (http://127.0.0.1:8002/mcp) avec cet en-tête.
+L'inspecteur passe alors par stdio, sans en-tête HTTP : il liste les outils, mais les appeler répond « le jeton du
+client manque ». Pour les appeler, s'y connecter en HTTP (http://127.0.0.1:8002/mcp) avec un jeton de session valide.
 
 Deux règles de sécurité, valables pour n'importe quel client MCP (pas seulement Wakil) :
-- le client vient de l'en-tête HTTP X-Client-Id de la requête, jamais d'un argument que le LLM pourrait choisir ;
-  à durcir en S5 (jeton signé) et S6 (serveur joignable seulement par agent-api) ;
+- le client vient du jeton de session signé par portail-api, relayé dans l'en-tête Authorization (voir jetons.py),
+  jamais d'un argument que le LLM pourrait choisir ; à durcir en S6 (serveur joignable seulement par agent-api) ;
 - un outil qui déplace de l'argent ne l'exécute que si l'appel porte la confirmation du client dans son _meta
   (« wakil/confirmation »). Sans elle, il ne fait qu'une vérification à blanc : rien ne bouge.
 """
@@ -23,7 +23,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from app import analyse, banque, operations
+from app import analyse, banque, jetons, operations
 
 serveur = MCPServer(
     "banque-atlas-demo",
@@ -40,11 +40,12 @@ IDEMPOTENCE = "wakil/idempotence"
 
 
 def client_de(ctx: Context) -> int:
-    """Le client connecté, d'après l'en-tête que pose agent-api (qui le tient de la session du navigateur)."""
-    valeur = (ctx.headers or {}).get("x-client-id", "")
-    if not valeur.isdigit():
-        raise ToolError("Client inconnu : l'en-tête X-Client-Id manque")
-    return int(valeur)
+    """Le client connecté, lu dans le jeton de session qu'agent-api relaie depuis le navigateur. Un en-tête qu'on
+    écrirait soi-même (l'ancien X-Client-Id) ne suffit plus."""
+    try:
+        return jetons.client_du_jeton((ctx.headers or {}).get("authorization"))
+    except jetons.JetonInvalide as refus:
+        raise ToolError(f"Client inconnu : {refus}") from None
 
 
 def confirme(ctx: Context) -> bool:

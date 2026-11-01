@@ -1,11 +1,13 @@
 """Tests du serveur MCP, en HTTP, avec le client MCP officiel (comme agent-api)."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+import jwt
 import pytest
+from conftest import MCP_PUBLIQUE, cle, jeton_de_session
 
-from app import analyse
+from app import analyse, banque, jetons
 
 
 def resultat(appel):
@@ -38,17 +40,42 @@ def test_le_serveur_annonce_ses_dix_outils_et_ce_qu_ils_font(mcp):
 # --- Le client vient de l'en-tête, jamais d'un argument -----------------------------------------------------------
 
 
-def test_le_client_vient_de_l_en_tete(mcp, fausse_banque):
+def test_le_client_vient_du_jeton_de_session(mcp, fausse_banque):
     assert resultat(mcp("consulter_solde", client_id=2))["solde"] == "150.00"
     assert fausse_banque.appels == [("solde", 2)]
 
 
-def test_sans_en_tete_le_serveur_refuse(mcp, fausse_banque):
+def test_sans_jeton_le_serveur_refuse(mcp, fausse_banque):
     appel = mcp("consulter_solde", client_id=None)
 
     assert appel.is_error
-    assert "X-Client-Id" in appel.content[0].text
+    assert "le jeton du client manque" in appel.content[0].text
     assert fausse_banque.appels == []
+
+
+@pytest.mark.parametrize(
+    "entetes",
+    [
+        {"X-Client-Id": "2"},  # l'ancien en-tête, que n'importe qui peut écrire
+        {"Authorization": f"Bearer {jeton_de_session(2, cle_privee=jetons.generer()[0])}"},  # signé par une autre clé
+        {"Authorization": f"Bearer {jeton_de_session(2, aud=['portail-api', 'agent-api'])}"},  # pas pour mcp-tools
+        {"Authorization": f"Bearer {jeton_de_session(2, exp=datetime.now(UTC) - timedelta(minutes=1))}"},  # expiré
+    ],
+    ids=["x-client-id", "autre-cle", "autre-destinataire", "expire"],
+)
+def test_un_jeton_qui_ne_prouve_rien_est_refuse(mcp, fausse_banque, entetes):
+    appel = mcp("consulter_solde", entetes=entetes)
+
+    assert appel.is_error
+    assert fausse_banque.appels == []
+
+
+def test_la_banque_recoit_un_jeton_court_signe_par_mcp_tools():
+    jeton = banque._entetes(3)["Authorization"].removeprefix("Bearer ")
+
+    contenu = jwt.decode(jeton, cle(MCP_PUBLIQUE, privee=False), algorithms=["RS256"], audience="bank-api")
+
+    assert (contenu["sub"], contenu["iss"], contenu["exp"] - contenu["iat"]) == ("3", "mcp-tools", 60)
 
 
 def test_les_listes_sont_rangees_sous_un_nom(mcp):

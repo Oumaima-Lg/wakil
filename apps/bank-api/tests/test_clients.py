@@ -1,7 +1,9 @@
 """Tests des routes d'un client : profil et comptes."""
 
-SALMA = {"X-Client-Id": "1"}
-YOUSSEF = {"X-Client-Id": "2"}
+from conftest import entetes
+
+SALMA = entetes(1)
+YOUSSEF = entetes(2)
 
 
 def test_voir_son_profil(api):

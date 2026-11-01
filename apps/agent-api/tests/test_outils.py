@@ -2,7 +2,10 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app import agent, outils
+from tests.jetons import jeton
 
 # Le schéma tel que le serveur MCP l'annonce pour payer_facture (paramètres facultatifs : « ou null »)
 SCHEMA_PAIEMENT = {
@@ -102,9 +105,30 @@ def test_le_montant_d_une_facture_reste_facultatif_pour_le_llm():
     assert simple["required"] == ["fournisseur"]
 
 
-def test_le_client_n_est_dit_qu_au_serveur_de_la_banque():
-    assert outils._entetes(outils.MCP_TOOLS_URL, 1) == {"X-Client-Id": "1"}
+@pytest.fixture
+def relayer():
+    """Pose le jeton du tour (comme /chat), et l'enlève après le test."""
+    poses = []
+    yield lambda valeur: poses.append(outils.JETON_DU_CLIENT.set(valeur))
+    for pose in reversed(poses):
+        outils.JETON_DU_CLIENT.reset(pose)
+
+
+def test_le_jeton_de_session_n_est_relaye_qu_au_serveur_de_la_banque(relayer):
+    salma = jeton(1)
+    relayer(salma)
+
+    assert outils._entetes(outils.MCP_TOOLS_URL, 1) == {"Authorization": f"Bearer {salma}"}
     assert outils._entetes(outils.MCP_FAQ_URL, 1) == {}
+    assert outils._entetes(outils.MCP_TOOLS_URL, None) == {}  # la liste des outils : pas de client
+
+
+@pytest.mark.parametrize("relaye", [None, "pas-un-jeton", "youssef"], ids=["absent", "illisible", "autre-client"])
+def test_jamais_un_jeton_qui_n_est_pas_celui_du_client_de_la_conversation(relayer, relaye):
+    relayer(jeton(2) if relaye == "youssef" else relaye)
+
+    with pytest.raises(outils.OutilsIndisponibles):
+        outils._entetes(outils.MCP_TOOLS_URL, 1)
 
 
 def test_chaque_outil_connu_a_son_serveur():

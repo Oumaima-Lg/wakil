@@ -25,24 +25,30 @@ def _cle_publique():
     return serialization.load_der_public_key(base64.b64decode(os.environ["WAKIL_JWT_CLE_PUBLIQUE"]))
 
 
+def client_du_jeton(jeton: str) -> int:
+    """Le client d'un jeton de session, après vérification de sa signature, de son émetteur, de son destinataire et de
+    son expiration. Sinon : jwt.InvalidTokenError."""
+    contenu = jwt.decode(
+        jeton,
+        _cle_publique(),
+        # algorithms=[...] est obligatoire : sans lui, un jeton « alg: none » (non signé) pourrait passer, ou un
+        # jeton HS256 signé avec la clé publique, que tout le monde peut connaître.
+        algorithms=[ALGORITHME],
+        issuer=EMETTEUR,
+        audience=MOI,
+        options={"require": ["sub", "iss", "aud", "exp"]},
+    )
+    return int(contenu["sub"])
+
+
 def client_connecte(wakil_session: Annotated[str | None, Cookie()] = None) -> int:
-    """Lit le cookie de session et vérifie sa signature, son émetteur, son destinataire et son expiration. Sinon : 401."""
+    """Lit le cookie de session et vérifie le jeton qu'il contient. Sinon : 401."""
     if wakil_session is None:
         raise HTTPException(status_code=401, detail="Non connecté")
     try:
-        contenu = jwt.decode(
-            wakil_session,
-            _cle_publique(),
-            # algorithms=[...] est obligatoire : sans lui, un jeton « alg: none » (non signé) pourrait passer, ou un
-            # jeton HS256 signé avec la clé publique, que tout le monde peut connaître.
-            algorithms=[ALGORITHME],
-            issuer=EMETTEUR,
-            audience=MOI,
-            options={"require": ["sub", "iss", "aud", "exp"]},
-        )
+        return client_du_jeton(wakil_session)
     except jwt.InvalidTokenError:  # signature fausse, jeton expiré, mal formé, ou destiné à un autre service
         raise HTTPException(status_code=401, detail="Session invalide ou expirée") from None
-    return int(contenu["sub"])
 
 
 # Une route qui déclare ce paramètre ne peut pas oublier de vérifier la session.

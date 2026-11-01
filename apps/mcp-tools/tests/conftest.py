@@ -1,22 +1,56 @@
-"""Préparation commune : un vrai serveur MCP en HTTP (l'en-tête X-Client-Id n'existe qu'en HTTP), et une fausse banque.
+"""Préparation commune : un vrai serveur MCP en HTTP (le jeton du client voyage dans un en-tête HTTP), une fausse
+banque, et des clés de test (jamais celles de .env).
 
-Les tests parlent au serveur comme agent-api : client MCP officiel, transport Streamable HTTP.
+Les tests parlent au serveur comme agent-api : client MCP officiel, transport Streamable HTTP, jeton de session signé
+par « portail-api » (ici, la clé de test PORTAIL).
 """
 
 import asyncio
+import base64
+import os
 import socket
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import jwt
 import pytest
 import uvicorn
+from cryptography.hazmat.primitives import serialization
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 
-from app import banque
+from app import banque, jetons
 from app.serveur import CONFIRMATION, IDEMPOTENCE, app
+
+# Les clés de test : portail-api (signe les sessions), mcp-tools (signe pour la banque).
+PORTAIL_PRIVEE, PORTAIL_PUBLIQUE = jetons.generer()
+MCP_PRIVEE, MCP_PUBLIQUE = jetons.generer()
+os.environ["WAKIL_JWT_CLE_PUBLIQUE"] = PORTAIL_PUBLIQUE
+os.environ["MCP_JWT_CLE_PRIVEE"] = MCP_PRIVEE
+
+
+def cle(texte: str, privee: bool = True):
+    binaire = base64.b64decode(texte)
+    if privee:
+        return serialization.load_der_private_key(binaire, password=None)
+    return serialization.load_der_public_key(binaire)
+
+
+def jeton_de_session(client_id: int, cle_privee: str = PORTAIL_PRIVEE, **changements) -> str:
+    """Le jeton que portail-api range dans le cookie et qu'agent-api relaie."""
+    maintenant = datetime.now(UTC)
+    contenu = {
+        "sub": str(client_id),
+        "iss": "portail-api",
+        "aud": ["portail-api", "agent-api", "mcp-tools"],
+        "iat": maintenant,
+        "exp": maintenant + timedelta(minutes=30),
+        **changements,
+    }
+    return jwt.encode(contenu, cle(cle_privee), algorithm="RS256")
 
 EAU, INTERNET = "Eau & Électricité (démo)", "Internet (démo)"
 FACTURES = {
@@ -149,15 +183,17 @@ def url_du_serveur():
 
 @pytest.fixture
 def mcp(url_du_serveur):
-    """Parle au serveur comme agent-api : client MCP officiel, en-tête X-Client-Id, confirmation dans _meta."""
+    """Parle au serveur comme agent-api : client MCP officiel, jeton de session relayé, confirmation dans _meta.
+    entetes : pour remplacer le jeton (attaques : jeton forgé, simple X-Client-Id…)."""
 
-    def client(client_id):
-        entetes = {"X-Client-Id": str(client_id)} if client_id is not None else {}
+    def client(client_id, entetes=None):
+        if entetes is None:
+            entetes = {"Authorization": f"Bearer {jeton_de_session(client_id)}"} if client_id is not None else {}
         return Client(streamable_http_client(url_du_serveur, http_client=create_mcp_http_client(headers=entetes)))
 
-    def appeler(nom, arguments=None, client_id=1, confirmation=None, idempotence=None):
+    def appeler(nom, arguments=None, client_id=1, confirmation=None, idempotence=None, entetes=None):
         async def faire():
-            async with client(client_id) as c:
+            async with client(client_id, entetes) as c:
                 meta = {CONFIRMATION: confirmation} if confirmation else {}
                 meta = {**meta, IDEMPOTENCE: idempotence} if idempotence else meta or None
                 return await c.call_tool(nom, arguments or {}, meta=meta)

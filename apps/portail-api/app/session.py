@@ -1,8 +1,9 @@
 """Session du client de démo : portail-api CRÉE le jeton signé (JWT) et le range dans un cookie que le JavaScript ne
 peut pas lire.
 
-RS256 : le jeton est signé avec la clé privée, que seul portail-api possède. agent-api le vérifie avec la clé publique :
-il peut s'assurer qu'un jeton vient d'ici, mais jamais en fabriquer un.
+RS256 : le jeton est signé avec la clé privée, que seul portail-api possède. agent-api le vérifie avec la clé publique,
+puis le relaie à mcp-tools, qui le vérifie aussi : tous deux peuvent s'assurer qu'un jeton vient d'ici, mais jamais en
+fabriquer un. Pour ses propres appels à bank-api, portail-api signe un jeton court (jeton_pour_la_banque).
 Équivalent Spring : le serveur d'autorisation (Keycloak, Spring Authorization Server) qui émet les jetons.
 """
 
@@ -20,8 +21,10 @@ DUREE = timedelta(minutes=30)
 ALGORITHME = "RS256"
 EMETTEUR = "portail-api"  # « iss » : qui a créé le jeton
 MOI = "portail-api"
-# « aud » : les services à qui le jeton est destiné. Chacun refuse un jeton qui ne le nomme pas.
-DESTINATAIRES = ["portail-api", "agent-api"]
+# « aud » : les services à qui le jeton est destiné. Chacun refuse un jeton qui ne le nomme pas. Pas bank-api : elle
+# ne reçoit que des jetons de 60 secondes (de mcp-tools ou de portail-api), jamais le jeton de session.
+DESTINATAIRES = ["portail-api", "agent-api", "mcp-tools"]
+DUREE_BANQUE = timedelta(seconds=60)
 # « 1 » en ligne (HTTPS) : le cookie ne voyage alors jamais en clair. « 0 » sur ton PC (http://localhost).
 COOKIE_SECURISE = os.environ.get("WAKIL_COOKIE_SECURISE", "0") == "1"
 
@@ -43,6 +46,20 @@ def creer_jeton(client_id: int, maintenant: datetime | None = None) -> str:
         "aud": DESTINATAIRES,
         "iat": maintenant,
         "exp": maintenant + DUREE,
+    }
+    return jwt.encode(contenu, _cle_privee(), algorithm=ALGORITHME)
+
+
+def jeton_pour_la_banque(client_id: int, maintenant: datetime | None = None) -> str:
+    """Le jeton d'un appel de portail-api à bank-api (pages de l'espace, actions sur la carte) : 60 secondes, pour ce
+    client et pour bank-api seule."""
+    maintenant = maintenant or datetime.now(UTC)
+    contenu = {
+        "sub": str(client_id),
+        "iss": EMETTEUR,
+        "aud": "bank-api",
+        "iat": maintenant,
+        "exp": maintenant + DUREE_BANQUE,
     }
     return jwt.encode(contenu, _cle_privee(), algorithm=ALGORITHME)
 

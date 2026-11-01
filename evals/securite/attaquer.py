@@ -307,18 +307,40 @@ def ouvrir_session(http: httpx.Client, client: int) -> str:
     return cookie
 
 
-def jeton_forge(client: int) -> str:
+# Ce que dit un jeton forgé, selon le service visé : une session de portail-api, ou un jeton court de mcp-tools.
+FORGES = {
+    "agent": ("portail-api", ["portail-api", "agent-api", "mcp-tools"]),
+    "mcp": ("portail-api", ["portail-api", "agent-api", "mcp-tools"]),
+    "banque": ("mcp-tools", "bank-api"),
+}
+
+
+def jeton_forge(client: int, cible: str = "agent") -> str:
     """Un jeton qui a tout d'un vrai (émetteur, destinataires, expiration), mais signé avec une clé inventée."""
     cle = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    emetteur, destinataires = FORGES[cible]
     maintenant = datetime.now(UTC)
     contenu = {
         "sub": str(client),
-        "iss": "portail-api",
-        "aud": ["portail-api", "agent-api"],
+        "iss": emetteur,
+        "aud": destinataires,
         "iat": maintenant,
         "exp": maintenant + timedelta(minutes=10),
     }
     return jwt.encode(contenu, cle, algorithm="RS256")
+
+
+def preuve_d_identite(jeton: str | None, client: int, cible: str, cookie: str) -> dict[str, str]:
+    """L'en-tête qu'envoie l'attaquant : l'ancien X-Client-Id (par défaut), un jeton forgé, ou le jeton de session de
+    Salma (volé, par exemple dans un journal) envoyé à un service qui n'est pas dans ses destinataires."""
+    match jeton:
+        case None:
+            return {"X-Client-Id": str(client)}
+        case "forge":
+            return {"Authorization": f"Bearer {jeton_forge(client, cible)}"}
+        case "session":
+            return {"Authorization": f"Bearer {cookie}"}
+    raise ValueError(f"Jeton inconnu : {jeton}")
 
 
 def evenements_sse(texte: str) -> list[dict]:
@@ -342,9 +364,8 @@ def envoyer(http: httpx.Client, cookie: str | None, conversation: str, texte: st
     return reponse.status_code, evenements_sse(reponse.text) if accepte(reponse.status_code) else []
 
 
-async def appel_mcp(outil: str, arguments: dict, client: int) -> dict:
+async def appel_mcp(outil: str, arguments: dict, entetes: dict[str, str]) -> dict:
     """Un appel direct au serveur MCP de la banque, en annonçant un autre client que Salma."""
-    entetes = {"X-Client-Id": str(client)}
     try:
         async with Client(streamable_http_client(MCP_BANQUE, http_client=create_mcp_http_client(headers=entetes))) as c:
             resultat = await c.call_tool(outil, arguments)
@@ -381,16 +402,13 @@ def executer(attaque: dict, base: psycopg.Connection, http: httpx.Client, cookie
             corps = dict(requete.get("corps") or {})
             if corps.pop("beneficiaire", None) == "premier":
                 corps["beneficiaire_id"] = premier_beneficiaire(base, requete["client"])
-            reponse = http.request(
-                requete["methode"],
-                BANQUE + requete["chemin"],
-                headers={"X-Client-Id": str(requete["client"])},
-                json=corps or None,
-            )
+            entetes = preuve_d_identite(requete.get("jeton"), requete["client"], "banque", cookie)
+            reponse = http.request(requete["methode"], BANQUE + requete["chemin"], headers=entetes, json=corps or None)
             return {"statuts": [reponse.status_code], "evenements": []}
         case "mcp":
             appel = attaque["appel"]
-            return asyncio.run(appel_mcp(appel["outil"], appel["arguments"], appel["client"]))
+            entetes = preuve_d_identite(appel.get("jeton"), appel["client"], "mcp", cookie)
+            return asyncio.run(appel_mcp(appel["outil"], appel["arguments"], entetes))
         case "agent":
             session = {"absente": None, "forgee": jeton_forge(2), "valide": cookie}[attaque["session"]]
             texte = ("chhal f compte dyali ? " * 1000)[: attaque.get("longueur", 22)].strip()
@@ -460,7 +478,7 @@ def ecrire_rapport() -> None:
     ]
     par_passage = [{r["id"]: r for r in p["resultats"]} for p in passages]
     for r in dernier:
-        cases = ["❌" if pp[r["id"]]["reussie"] else "✅" if r["id"] in pp else "—" for pp in par_passage]
+        cases = ["—" if r["id"] not in pp else "❌" if pp[r["id"]]["reussie"] else "✅" for pp in par_passage]
         ecriture = ECRITURES.get(r.get("ecriture"), r.get("ecriture"))
         canal = CANAUX[r["canal"]] + (f" ({ecriture})" if ecriture else "")
         lignes.append(

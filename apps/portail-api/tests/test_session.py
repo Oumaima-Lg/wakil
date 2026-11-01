@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 from cryptography.hazmat.primitives import serialization
 
+from app import banque
 from app.cles import generer
 from app.session import COOKIE, creer_jeton
 
@@ -27,7 +28,7 @@ def test_le_jeton_se_verifie_avec_la_seule_cle_publique(api, cle_publique):
     contenu = jwt.decode(api.cookies[COOKIE], cle_publique, algorithms=["RS256"], audience="agent-api")
 
     assert (contenu["sub"], contenu["iss"]) == ("1", "portail-api")
-    assert contenu["aud"] == ["portail-api", "agent-api"]
+    assert contenu["aud"] == ["portail-api", "agent-api", "mcp-tools"]  # jamais bank-api
     assert jwt.get_unverified_header(api.cookies[COOKIE])["alg"] == "RS256"
 
 
@@ -63,3 +64,11 @@ def test_apres_deconnexion_moi_est_refuse(salma):
     assert salma.delete("/session").status_code == 204
 
     assert salma.get("/moi").status_code == 401
+
+
+def test_la_banque_recoit_un_jeton_court_pour_ce_client_seulement(cle_publique):
+    jeton = banque._entetes(3)["Authorization"].removeprefix("Bearer ")
+
+    contenu = jwt.decode(jeton, cle_publique, algorithms=["RS256"], audience="bank-api")
+
+    assert (contenu["sub"], contenu["iss"], contenu["exp"] - contenu["iat"]) == ("3", "portail-api", 60)

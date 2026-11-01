@@ -1,7 +1,9 @@
 """Tests des routes des factures."""
 
-SALMA = {"X-Client-Id": "1"}
-YOUSSEF = {"X-Client-Id": "2"}
+from conftest import entetes
+
+SALMA = entetes(1)
+YOUSSEF = entetes(2)
 EAU = "Eau & Électricité (démo)"
 
 

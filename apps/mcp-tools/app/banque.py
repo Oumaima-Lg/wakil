@@ -1,11 +1,13 @@
-"""Appels à bank-api. Chaque fonction reçoit le client de la requête MCP (en-tête X-Client-Id), jamais un argument
-choisi par le LLM."""
+"""Appels à bank-api. Chaque fonction reçoit le client de la requête MCP (lu dans le jeton de session), jamais un
+argument choisi par le LLM. La banque reçoit un jeton de 60 secondes signé par mcp-tools (voir jetons.py)."""
 
 import os
 from datetime import date
 from decimal import Decimal
 
 import httpx
+
+from app import jetons
 
 BANK_API_URL = os.environ.get("BANK_API_URL", "http://127.0.0.1:8000")
 
@@ -18,15 +20,19 @@ class RefusBanque(Exception):
         self.detail = detail
 
 
+def _entetes(client_id: int) -> dict[str, str]:
+    return {"Authorization": f"Bearer {jetons.jeton_pour_la_banque(client_id)}"}
+
+
 def _get(client_id: int, chemin: str, **params):
-    reponse = httpx.get(f"{BANK_API_URL}{chemin}", params=params, headers={"X-Client-Id": str(client_id)}, timeout=10)
+    reponse = httpx.get(f"{BANK_API_URL}{chemin}", params=params, headers=_entetes(client_id), timeout=10)
     reponse.raise_for_status()  # une erreur 4xx ou 5xx devient une exception
     return reponse.json()
 
 
 def _post(client_id: int, chemin: str, simulation: bool, json: dict | None = None, cle: str | None = None) -> dict:
     """cle : la clé d'idempotence de l'opération ; rejouée, la banque renvoie la même réponse sans rien refaire."""
-    entetes = {"X-Client-Id": str(client_id)}
+    entetes = _entetes(client_id)
     if cle and not simulation:
         entetes["Idempotency-Key"] = cle
     reponse = httpx.post(
