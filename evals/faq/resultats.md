@@ -33,7 +33,7 @@ Pour chaque seuil : ce que Wakil ferait. Une question de FAQ est **bien servie**
 
 Meilleur score d'une question hors FAQ : **0.77**. Plus faible score d'une question de FAQ bien classée : **0.55**.
 
-Temps de recherche (vecteur de la question + requête pgvector) : médiane 71 ms, maximum 7927 ms.
+Temps de recherche (vecteur de la question + requête pgvector) : médiane 95 ms, maximum 397 ms.
 
 ## Détail de chaque question
 
@@ -62,7 +62,7 @@ Temps de recherche (vecteur de la question + requête pgvector) : médiane 71 ms
 | les virements wach payants ? | melange | frais | delai-virement (0.62) | plafond (0.59) | frais (0.58) | ❌ |
 | le maximum li n9der nvirer f une seule fois ch7al ? | melange | plafond | plafond (0.62) | frais (0.61) | delai-virement (0.60) | ✅ |
 | le virement kaykhd combien de temps ? | melange | delai-virement | delai-virement (0.58) | plafond (0.56) | frais (0.54) | ✅ |
-| ajouter un nouveau bénéficiaire, wach possible ? | melange | beneficiaires | beneficiaires (0.79) | plafond (0.53) | wakil (0.52) | ✅ |
+| ajouter un nouveau bénéficiaire, wach possible ? | melange | beneficiaires | beneficiaires (0.79) | plafond (0.53) | factures (0.51) | ✅ |
 | la facture d'électricité, wach t9der tpayiha ? | melange | factures | factures (0.68) | wakil (0.67) | carte-perdue (0.63) | ✅ |
 | si je dis non f la confirmation chno kayw9e3 ? | melange | confirmation | confirmation (0.71) | decouvert (0.69) | wakil (0.57) | ✅ |
 | j'ai perdu ma carte, chno khassni ndir ? | melange | carte-perdue | carte-perdue (0.70) | securite (0.66) | contester (0.64) | ✅ |

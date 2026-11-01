@@ -56,3 +56,40 @@ def test_une_categorie_de_depenses_non_nommee_est_inventee():
 
 def test_le_mois_oublie_vaut_ce_mois():
     assert juger(sortie("analyser_depenses"), "analyser_depenses", {"periode": "ce_mois"})[0] is True
+
+
+@pytest.mark.parametrize(
+    ("question", "obtenu", "reussi"),
+    [("3tini relevé dyal chhar 10", 10, True), ("relevé d'octobre", "10", True), ("كشف الحساب ديال أكتوبر", 10, True),
+     ("3tini relevé dyal chhar 10", 9, False)],
+)  # fmt: skip
+def test_le_mois_d_un_releve(question, obtenu, reussi):
+    choix = sortie("lister_transactions", {"mois": obtenu})
+    assert juger(choix, "lister_transactions", {"mois": 10}, question=question)[0] is reussi
+
+
+def test_un_mois_que_le_client_n_a_pas_donne_est_invente():
+    choix = sortie("lister_transactions", {"mois": 10})
+    assert juger(choix, "lister_transactions", question="affichili les opérations dyali") == (
+        False,
+        "mois inventé : 10",
+    )
+
+
+@pytest.mark.parametrize(("obtenu", "reussi"), [("1200", True), ("•••• 1200", True), ("7919", False)])
+def test_la_carte_designee_par_ses_4_chiffres(obtenu, reussi):
+    choix = sortie("bloquer_carte", {"carte": obtenu})
+    assert juger(choix, "bloquer_carte", {"carte": "1200"}, question="bloqui la carte 1200")[0] is reussi
+
+
+def test_une_carte_que_le_client_n_a_pas_designee_est_inventee():
+    choix = sortie("bloquer_carte", {"carte": "1200"})
+    assert juger(choix, "bloquer_carte", question="bloqui liya la carte") == (False, "carte inventé : '1200'")
+
+
+@pytest.mark.parametrize("question", ["كشف الحساب ديال أكتوبر", "relevé d'octobre", "relevé dyal chhar 10"])
+def test_un_mois_nomme_dans_la_phrase_n_est_pas_invente(question):
+    """Le client n'a pas demandé de mois précis dans les arguments attendus, mais il l'a bien écrit : pas d'invention."""
+    choix = sortie("lister_transactions", {"mois": 10})
+    raison = juger(choix, "lister_transactions", question=question)[1]
+    assert "inventé" not in raison

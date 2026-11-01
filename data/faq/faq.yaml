@@ -8,10 +8,12 @@
 - id: wakil
   titre: Ce que Wakil sait faire
   texte: >-
-    Wakil répond sur votre compte de la Banque Atlas Démo : il donne le solde, montre les dernières opérations et les
-    factures à payer, paie une facture et fait un virement vers un bénéficiaire déjà enregistré, toujours après votre
-    confirmation. Il répond aussi aux questions de cette FAQ. Il ne peut ni ouvrir un compte, ni ajouter un
-    bénéficiaire, ni bloquer une carte.
+    Wakil répond sur votre compte de la Banque Atlas Démo : il donne le solde, le plafond de virement, les dernières
+    opérations ou le relevé d'un mois, ce que vous avez dépensé, les factures à payer, vos bénéficiaires et l'état de
+    votre carte. Il paie une facture, fait un virement vers un bénéficiaire déjà enregistré et peut bloquer votre
+    carte, toujours après votre confirmation. Il répond aussi aux questions de cette FAQ. Il ne peut ni ouvrir un
+    compte, ni ajouter un bénéficiaire, ni débloquer une carte. Tant que votre carte est bloquée ou en opposition, il
+    se met en mode sécurité et ne fait plus rien.
   questions:
     - chno t9der dir lia ?
     - شنو كتقدر دير ليا؟
@@ -106,10 +108,14 @@
     - kifach nannuli l'opération 9bel ma tdouz ?
 
 - id: carte-perdue
-  titre: Carte perdue ou volée
+  titre: Carte perdue, volée ou bloquée
   texte: >-
-    La carte de la Banque Atlas Démo est fictive : il n'y a rien à bloquer. Avec une vraie carte, faites opposition
-    sans attendre auprès de votre banque, par ses canaux officiels. Wakil ne peut pas bloquer une carte.
+    La carte de la Banque Atlas Démo est fictive. Si vous l'avez égarée, bloquez-la, avec Wakil (« bloqui liya la
+    carte ») ou dans la page Ma carte : ce blocage est temporaire. Pour la débloquer, allez dans Ma carte : pour votre
+    sécurité, Wakil ne débloque jamais une carte. Si elle est perdue ou volée, faites opposition dans Ma carte : c'est
+    définitif, puis commandez-y une nouvelle carte. Tant que la carte est bloquée ou en opposition, Wakil reste en
+    mode sécurité. Avec une vraie carte, faites opposition sans attendre auprès de votre banque, par ses canaux
+    officiels.
   questions:
     - ضاعت ليا الكارطة، شنو ندير؟
     - tsre9at lia la carte, kifach nbloquiha ?

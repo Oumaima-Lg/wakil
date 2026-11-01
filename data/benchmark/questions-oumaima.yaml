@@ -22,7 +22,13 @@
 #   lister_beneficiaires (aucun argument) : la liste des bénéficiaires du client et leur nombre (depuis le 30/10)
 #   analyser_depenses    periode : ce_mois | mois_dernier ; categorie : courses | restaurant | cafe | pharmacie | taxi |
 #                        carburant | vetements | retraits | factures | virements (seulement si le client en nomme une)
+#   lister_transactions  mois : 1 à 12, seulement si le client demande un mois précis ou son relevé (« relevé dyal chhar 10 »)
+#   consulter_cartes     (aucun argument) : l'état de la carte (active, bloquée, en opposition) — depuis le 31/10
+#   bloquer_carte        carte : les 4 derniers chiffres, seulement s'ils sont donnés — depuis le 31/10. Wakil ne fait
+#                        QUE bloquer : « debloqui la carte » ou « opposition » → question_faq (la fiche « Carte perdue,
+#                        volée ou bloquée » explique que ça se fait dans l'espace, page Ma carte)
 #   outil: null     Wakil ne doit appeler aucun outil (hors sujet, politesse)
+#   Catégories ajoutées le 31/10 : releve, cartes, blocage
 #   Plusieurs demandes dans un même message : categorie: plusieurs, et la liste des outils attendus,
 #   outil: [consulter_solde, lister_beneficiaires]
 #
@@ -138,3 +144,158 @@
   outil: [consulter_solde, lister_beneficiaires]
   arguments: {}
 
+# --- Carte : l'état de la carte (ajoutées le 31/10)
+
+- question: "3tini les infos dyal ma carte"
+  ecriture: melange
+  categorie: cartes
+  outil: consulter_cartes
+  arguments: {}
+
+- question: "donner moi les infos de ma carte"
+  ecriture: francais
+  categorie: cartes
+  outil: consulter_cartes
+  arguments: {}
+
+- question: "la carte dyali deja bloquée ?"
+  ecriture: melange
+  categorie: cartes
+  outil: consulter_cartes
+  arguments: {}
+
+- question: "Ma carte est deja bloquée ?"
+  ecriture: francais
+  categorie: cartes
+  outil: consulter_cartes
+  arguments: {}
+
+- question: "bghit n3rf wach carte dyali active oula la ?"
+  ecriture: latin
+  categorie: cartes
+  outil: consulter_cartes
+  arguments: {}
+
+- question: "Je voulais savoir si ma carte est active ou pas ?"
+  ecriture: francais
+  categorie: cartes
+  outil: consulter_cartes
+  arguments: {}
+
+# --- Solde (ajoutées le 31/10)
+
+- question: "ch7ale b9a liya f solde dyali"
+  ecriture: latin
+  categorie: solde
+  outil: consulter_solde
+  arguments: {}
+
+- question: "combien reste-t-il dans mon compte"
+  ecriture: francais
+  categorie: solde
+  outil: consulter_solde
+  arguments: {}
+
+- question: "Bghite nsifte 2000 DH l Fatima, wach kayn solde kafi ?"
+  ecriture: latin
+  categorie: solde  # elle demande si le solde suffit : pas encore le virement
+  outil: consulter_solde
+  arguments: {}
+
+- question: "Je veux envoyer 2000 DH à Fatima, est-ce que j'ai assez de solde ?"
+  ecriture: francais
+  categorie: solde  # idem
+  outil: consulter_solde
+  arguments: {}
+
+- question: "chofe liya solde"
+  ecriture: latin
+  categorie: solde
+  outil: consulter_solde
+  arguments: {}
+
+- question: "voir mon solde"
+  ecriture: francais
+  categorie: solde
+  outil: consulter_solde
+  arguments: {}
+
+# --- FAQ « Carte » : débloquer se fait seulement dans l'espace, jamais par Wakil (ajoutées le 31/10)
+
+- question: "dibloque liya la carte dyali"
+  ecriture: melange
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+- question: "Merci de débloquer ma carte"
+  ecriture: francais
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+# --- FAQ « Ce que Wakil sait faire » (ajoutées le 31/10)
+
+- question: "chno kadire f 7yatke ?"
+  ecriture: latin
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+- question: "qu'est ce que tu fais dans ta vie ?"
+  ecriture: francais
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+# --- FAQ « Bénéficiaires » : on ne peut pas en ajouter dans la démo (ajoutées le 31/10)
+
+- question: "zide liya benifciaire jdide"
+  ecriture: latin
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+- question: "bgjite nzide benifiaire"
+  ecriture: latin
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+- question: "je veux ajouter un bénéficiare"
+  ecriture: francais
+  categorie: faq
+  outil: question_faq
+  arguments: {}
+
+# --- Virement vers soi-même (ajoutées le 01/11) : le LLM doit comprendre que c'est un virement (montant 2000, sans
+# bénéficiaire : « moi » n'en est pas un) ; c'est au code de dire que c'est impossible (décision d'Oumaima).
+
+- question: "bghite nsifte 2000 dh liya ana fl compte dyali."
+  ecriture: latin
+  categorie: virement
+  outil: faire_virement
+  arguments: {montant: 2000}
+
+- question: "je veux envoyer 2000 dh à moi-même dans mon compte."
+  ecriture: francais
+  categorie: virement
+  outil: faire_virement
+  arguments: {montant: 2000}
+
+# --- Bénéficiaires, puis virement à « elle » dans la suite (ajoutées le 01/11)
+
+- question: "wrini la liste dyal les bénéficiaires li 3ndi"
+  ecriture: melange
+  categorie: beneficiaires
+  outil: lister_beneficiaires
+  arguments: {}
+
+# « liha » (à elle) : le LLM ne voit pas la liste affichée (il ne relit jamais les données, par sécurité), il ne
+# peut donc pas savoir que c'est Fatima. Attendu : le montant seulement ; un nom écrit par le LLM serait inventé.
+- avant: ["wrini la liste dyal les bénéficiaires li 3ndi"]
+  question: "sf mzn, daba sifte liha 456.78 dh"
+  ecriture: latin
+  categorie: suite
+  outil: faire_virement
+  arguments: {montant: 456.78}

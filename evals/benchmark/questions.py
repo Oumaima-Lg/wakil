@@ -18,9 +18,10 @@ import yaml
 
 RACINE = Path(__file__).resolve().parents[2]
 CATEGORIES = {"solde", "plafond", "operations", "factures", "paiement", "virement", "faq", "floue", "hors_sujet",
-              "suite", "non_disponible", "beneficiaires", "depenses", "plusieurs"}  # fmt: skip
+              "suite", "non_disponible", "beneficiaires", "depenses", "plusieurs", "releve", "cartes", "blocage"}  # fmt: skip
 OUTILS = {"consulter_solde", "consulter_plafond", "lister_transactions", "lister_factures", "lister_beneficiaires",
-          "analyser_depenses", "payer_facture", "faire_virement", "question_faq", None}  # fmt: skip
+          "analyser_depenses", "consulter_cartes", "payer_facture", "faire_virement", "bloquer_carte", "question_faq",
+          None}  # fmt: skip
 AUCUN = "aucun"  # « aucun outil » : promptfoo refuse une variable null
 
 

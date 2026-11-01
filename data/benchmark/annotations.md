@@ -145,3 +145,29 @@ est hors sujet. Restent ouverts : `suite` (mémoire, S2 morceau 5), `pas-encore-
 
 **Piste pour le benchmark** : sur les mêmes demandes, « khlsse liya eau » et « khlesse liya tous les factures » réussissent, alors que « 5lse eau » et « 5lse liya tous les factures » échouent. Une étape qui récrirait les chiffres de l'arabizi avant le LLM (5 → kh, 3 → ع…) serait une variante à mesurer, à côté de la comparaison des modèles.
 
+
+## Conversation 5
+
+- **Date** : 31/10/2026 · **Cliente** : Salma (id 1) · **Testée par** : Oumaima · **Version** : avec le morceau 18 (outils des cartes et du relevé), avant l'application des migrations
+- **Bilan** : 1 ✅ / 4 ❌ sur 5 messages (2 dus à des bugs du code, corrigés).
+
+| # | Message | Écriture | Attendu | Obtenu | Résultat | Famille |
+|---|---|---|---|---|---|---|
+| 3 | bloqui liya la carte dyali$ | mélange | `bloquer_carte` → carte « Wach nbloqui ? » | « kayn mochkil f la banque » | ❌ | `migration-manquante` (bug : table `cartes` pas encore créée dans la base, erreur 500 ; corrigé) |
+| 5 | ch7al solde | mélange | `consulter_solde` | 2 350 DH | ✅ | |
+| 7 | bloqui liya la carte | mélange | `bloquer_carte` | refus | ❌ | `echec-relu-comme-fait` (bug : le blocage raté du n° 3 était relu « Fait », le LLM l'a cru déjà traité ; corrigé, relu « Échec ») |
+| 9 | tu peux bloquer ma carte ? | français | `bloquer_carte` | refus | ❌ | `suite` (seule dans une conversation neuve, la même phrase donne bien `bloquer_carte`) |
+| 11 | bloquiliya la carte | latin | `bloquer_carte` | « kayn mochkil f la banque » | ❌ | `migration-manquante` ; seule dans une conversation neuve : `question_faq` (`mots-colles`) |
+
+**Constat en conversation neuve (qwen3:4b-instruct)** : « bloqui liya la carte », « bloqui liya la carte dyali » et « tu peux bloquer ma carte ? » donnent `bloquer_carte`, mais **avec `carte: '1234'` inventé** les trois fois (famille `parametre-invente`) : la banque ne trouverait aucune carte en « 1234 ». « wach la carte dyali khddama ? » → `consulter_cartes`, « 3tini relevé dyal chhar 9 » → `lister_transactions(mois=9)` : réussis.
+
+## Conversation 6
+
+- **Date** : 31/10/2026 · **Cliente** : Salma (id 1) · **Testée par** : Oumaima · **Version** : morceau 18, mode sécurité, carte active
+- **Bilan** : 0 ✅ / 1 ❌ sur 1 message.
+
+| # | Message | Écriture | Attendu | Obtenu | Résultat | Famille |
+|---|---|---|---|---|---|---|
+| 1 | bghit nzid RIB jdid f la liste | mélange | FAQ « Bénéficiaires » (on ne peut pas en ajouter dans la démo) | `lister_beneficiaires` : la liste | ❌ | `vol-d-outil` (mot pour mot une question type de la fiche, mais le LLM ne voit pas les questions types : il choisit `lister_beneficiaires` à cause de « la liste ») |
+
+**Piste à mesurer avec le prochain benchmark** : la description de `lister_beneficiaires` précise « ne sert pas à en ajouter ni à en supprimer ». Même famille déjà mesurée : 5 questions de FAQ sur les bénéficiaires vont à `lister_beneficiaires` (paquet mise au point, 31/10).

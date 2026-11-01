@@ -5,6 +5,8 @@ Réussi si le LLM a choisi le bon outil, avec les arguments attendus, et sans ri
 - montant : le même nombre (« 300 », « 300 DH », 300.0) ;
 - bénéficiaire : chaque mot attendu se retrouve dans le nom choisi (« Fatima » dans « l Fatima ») ;
 - mois des dépenses : le même ; oublié, il vaut « ce_mois » (la valeur par défaut de l'outil) ;
+- mois d'un relevé (1 à 12) : le même nombre ; il est inventé si la phrase ne contient ni ce nombre ni le nom du mois ;
+- carte : les 4 derniers chiffres attendus se retrouvent dans ce que le modèle a écrit ;
 - invention : un argument que le client n'a pas donné (un bénéficiaire ou un montant absent de sa phrase, une catégorie
   de dépenses qu'il n'a pas nommée, ou tout argument d'une demande floue) fait échouer.
 
@@ -19,6 +21,12 @@ from decimal import Decimal, InvalidOperation
 from questions import AUCUN, simplifier
 
 PARTICULES = {"l", "li", "le", "la", "a", "ila", "f"}
+# Les noms des mois, en français et en arabe marocain : un mois de relevé est inventé si la phrase n'en contient aucun.
+NOMS_DES_MOIS = [
+    ("janvier", "يناير"), ("fevrier", "فبراير"), ("mars", "مارس"), ("avril", "أبريل"), ("mai", "ماي"),
+    ("juin", "يونيو"), ("juillet", "يوليوز"), ("aout", "غشت"), ("septembre", "شتنبر"), ("octobre", "أكتوبر"),
+    ("novembre", "نونبر"), ("decembre", "دجنبر"),
+]  # fmt: skip
 
 
 def _montant(valeur) -> Decimal | None:
@@ -42,6 +50,10 @@ def _argument_juste(nom: str, attendu, obtenu) -> bool:
         return _montant(obtenu) is not None and _montant(obtenu) == _montant(attendu)
     if nom == "beneficiaire":
         return _mots(attendu) <= _mots(obtenu)
+    if nom == "mois":
+        return str(obtenu).strip().isdigit() and int(obtenu) == int(attendu)
+    if nom == "carte":
+        return str(attendu) in re.sub(r"\D", "", str(obtenu))
     return str(obtenu) == str(attendu)
 
 
@@ -52,7 +64,14 @@ def _invente(nom: str, obtenu, question: str) -> bool:
     if nom == "montant":
         nombre = _montant(obtenu)
         return nombre is not None and f"{nombre.normalize():f}" not in re.sub(r"[\s ]", "", question)
-    return nom == "categorie"  # une catégorie non attendue : le client n'en a nommé aucune
+    if nom == "mois":
+        if not str(obtenu).strip().isdigit() or not 1 <= int(obtenu) <= 12:
+            return True
+        phrase = simplifier(question)
+        return str(int(obtenu)) not in re.findall(r"\d+", phrase) and not any(
+            simplifier(nom_du_mois) in phrase for nom_du_mois in NOMS_DES_MOIS[int(obtenu) - 1]
+        )
+    return nom in ("categorie", "carte")  # une catégorie ou une carte non attendue : le client n'en a nommé aucune
 
 
 def get_assert(output, context) -> dict:
