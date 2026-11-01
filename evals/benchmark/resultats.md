@@ -34,13 +34,19 @@ Sur les questions où deux modèles ne sont pas d'accord : si p est petit (moins
 | `qwen3:4b-instruct` | 66 % (23/35) | 83 % (65/78) |
 | `qwen3:8b` | 71 % (25/35) | 73 % (57/78) |
 
-## Par écriture (tous paquets)
+## Par langue (paquet test)
 
-| Modèle | arabe | latin | melange | francais | anglais | arabe_standard |
-|---|---|---|---|---|---|---|
-| `atlas-chat:9b` | 79 % (26/33) | 67 % (38/57) | 68 % (27/40) | 80 % (16/20) | 80 % (8/10) | 80 % (8/10) |
-| `qwen3:4b-instruct` | 52 % (17/33) | 56 % (32/57) | 72 % (29/40) | 75 % (15/20) | 100 % (10/10) | 100 % (10/10) |
-| `qwen3:8b` | 52 % (17/33) | 46 % (26/57) | 58 % (23/40) | 65 % (13/20) | 90 % (9/10) | 90 % (9/10) |
+Peu de questions par langue en dehors de la darija : une question y vaut 6 à 11 points, ce sont des tendances.
+
+| Langue | Questions | `atlas-chat:9b` | `qwen3:4b-instruct` | `qwen3:8b` |
+|---|---|---|---|---|
+| Darija (toutes écritures) | 78 | 79 % (62/78) | 73 % (57/78) | 68 % (53/78) |
+| · en lettres arabes | 21 | 81 % (17/21) | 71 % (15/21) | 76 % (16/21) |
+| · en lettres latines | 33 | 76 % (25/33) | 64 % (21/33) | 58 % (19/33) |
+| · mélange darija-français | 24 | 83 % (20/24) | 88 % (21/24) | 75 % (18/24) |
+| Français | 16 | 81 % (13/16) | 75 % (12/16) | 75 % (12/16) |
+| Anglais | 9 | 89 % (8/9) | 100 % (9/9) | 89 % (8/9) |
+| Arabe standard | 10 | 80 % (8/10) | 100 % (10/10) | 90 % (9/10) |
 
 ## Par catégorie (tous paquets)
 

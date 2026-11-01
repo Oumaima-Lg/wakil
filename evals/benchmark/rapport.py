@@ -16,7 +16,17 @@ from pathlib import Path
 import yaml
 
 ICI = Path(__file__).resolve().parent
-ECRITURES = ["arabe", "latin", "melange", "francais", "anglais", "arabe_standard"]
+# Les langues du rapport : la darija dans ses trois écritures, puis chaque écriture, puis les autres langues.
+# « arabe » est la darija en lettres arabes, « arabe_standard » l'arabe des journaux.
+LANGUES = [
+    ("Darija (toutes écritures)", {"arabe", "latin", "melange"}),
+    ("· en lettres arabes", {"arabe"}),
+    ("· en lettres latines", {"latin"}),
+    ("· mélange darija-français", {"melange"}),
+    ("Français", {"francais"}),
+    ("Anglais", {"anglais"}),
+    ("Arabe standard", {"arabe_standard"}),
+]
 
 
 def pourcent(reussis: int, total: int) -> str:
@@ -101,6 +111,19 @@ def tableau_auteurs(par_modele: dict[str, list[dict]]) -> list[str]:
     return lignes
 
 
+def tableau_langues(par_modele: dict[str, list[dict]]) -> list[str]:
+    """Paquet test, par langue : une ligne par langue (et par écriture de la darija), une colonne par modèle."""
+    lignes = ["| Langue | Questions | " + " | ".join(f"`{m}`" for m in par_modele) + " |",
+              "|---|---|" + "---|" * len(par_modele)]  # fmt: skip
+    for nom, ecritures in LANGUES:
+        groupes = [
+            [r for r in reps if r["paquet"] == "test" and r["ecriture"] in ecritures] for reps in par_modele.values()
+        ]
+        cellules = [pourcent(sum(r["reussi"] for r in groupe), len(groupe)) for groupe in groupes]
+        lignes.append(f"| {nom} | {len(groupes[0]) if groupes else 0} | " + " | ".join(cellules) + " |")
+    return lignes
+
+
 def mcnemar(gagnes: int, perdus: int) -> float:
     """Probabilité d'un écart au moins aussi grand si les deux modèles se valaient (test exact, bilatéral)."""
     n = gagnes + perdus
@@ -160,9 +183,11 @@ def main() -> None:
         "",
         *tableau_auteurs(par_modele),
         "",
-        "## Par écriture (tous paquets)",
+        "## Par langue (paquet test)",
         "",
-        *tableau_par(par_modele, "ecriture", ECRITURES),
+        "Peu de questions par langue en dehors de la darija : une question y vaut 6 à 11 points, ce sont des tendances.",
+        "",
+        *tableau_langues(par_modele),
         "",
         "## Par catégorie (tous paquets)",
         "",
