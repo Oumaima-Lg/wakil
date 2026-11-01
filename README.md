@@ -141,31 +141,81 @@ cd apps/agent-api && uv run pytest && uv run lint-imports    # sans Ollama ni se
 cd apps/web && npm run lint && npm run typecheck
 ```
 
-La mesure de la recherche dans la FAQ (base et Ollama démarrés, FAQ indexée). Elle écrit [evals/faq/resultats.md](evals/faq/resultats.md) :
+Pour relancer les mesures du benchmark et de la FAQ : voir [Relancer les mesures](#relancer-les-mesures).
+
+## Le benchmark darija
+
+Le cœur du projet : une évaluation ouverte qui mesure si un modèle d'IA **comprend une demande bancaire en darija et choisit le bon outil, avec les bons paramètres**. Des modèles darija existent, mais aucune évaluation publique ne mesure s'ils savent *agir*.
+
+**Ce qui est mesuré.** L'étape 1 de Wakil, par son vrai chemin (même prompt, mêmes outils annoncés par les serveurs MCP, même historique de conversation), sans rien exécuter. Une réponse est réussie si le modèle choisit le bon outil, avec les paramètres attendus, **sans rien inventer** (un bénéficiaire ou un montant absent de la phrase fait échouer). Le juge est du code, pas un LLM : réussi ou raté, sans zone grise.
+
+**Les questions** ([`data/benchmark/`](data/benchmark/)). 113 questions jamais utilisées pour régler Wakil : 35 écrites à la main par l'auteure, avec ses fautes et ses abréviations, et 78 générées par une IA puis relues par elle. Elles couvrent la darija en lettres arabes, en lettres latines (arabizi) et mélangée au français, ainsi que le français, l'anglais et l'arabe standard. 57 autres questions, qui ont déjà servi à régler Wakil, sont mesurées à part : elles donneraient un score trop optimiste.
+
+### Les modèles du LLM
+
+Mesure du 01/11/2026 sur Google Colab (GPU NVIDIA T4), les trois modèles sur la même machine. Détail, échecs compris : [`evals/benchmark/resultats.md`](evals/benchmark/resultats.md).
+
+| Modèle (Ollama, local) | Outil et paramètres justes | Bon outil | Temps médian (GPU T4) | Taille |
+|---|---|---|---|---|
+| **`qwen3:4b-instruct`** (choisi pour la V1) | **78 %** (88/113) | 83 % | **0,4 s** | 2,5 Go |
+| `atlas-chat:9b` (spécialiste darija, en mode JSON) | **81 %** (91/113) | 85 % | 1,6 s | 5,8 Go |
+| `qwen3:8b` (raisonnement coupé) | 73 % (82/113) | 80 % | 0,7 s | 5,2 Go |
+
+Au premier tour, sur le PC (90 questions), `llama3.2:3b` (58 %) et `atlas-chat:2b` (54 %) avaient été écartés.
+
+| Langue (questions de test) | `qwen3:4b-instruct` | `atlas-chat:9b` | `qwen3:8b` |
+|---|---|---|---|
+| Darija, toutes écritures (78) | 73 % | **79 %** | 68 % |
+| · en lettres arabes (21) | 71 % | **81 %** | 76 % |
+| · en lettres latines (33) | 64 % | **76 %** | 58 % |
+| · mélange darija-français (24) | **88 %** | 83 % | 75 % |
+| Français (16) | 75 % | **81 %** | 75 % |
+| Anglais (9) | **100 %** | 89 % | 89 % |
+| Arabe standard (10) | **100 %** | 80 % | 90 % |
+
+| Auteur des questions | `qwen3:4b-instruct` | `atlas-chat:9b` | `qwen3:8b` |
+|---|---|---|---|
+| Écrites à la main (35) | 66 % | **80 %** | 71 % |
+| Générées par IA, relues (78) | **83 %** | 81 % | 73 % |
+
+### Le modèle d'embeddings de la FAQ
+
+Retrouver la bonne fiche de la FAQ, sur 38 questions de FAQ et 10 qui n'en sont pas ([`evals/faq/embeddings/`](evals/faq/embeddings/)). « hit@1 » : la bonne fiche arrive en premier ; « hit@3 » : elle est parmi les trois premières. Qwen3-Embedding et embeddinggemma sont conçus pour recevoir une consigne avant le texte : ils sont mesurés sans, puis avec.
+
+| Modèle | hit@1 | hit@3 | Darija en lettres arabes | Au meilleur seuil : bonne fiche / mauvaise fiche |
+|---|---|---|---|---|
+| **`bge-m3`** (choisi pour la V1) | **71 %** | 89 % | 60 % | **63 % / 11 %** |
+| `qwen3-embedding:0.6b`, avec consigne | 68 % | **95 %** | 60 % | 63 % / 26 % |
+| `embeddinggemma`, avec ses formats | **71 %** | 92 % | **70 %** | 47 % / 13 % |
+
+### Ce que le benchmark a appris
+
+1. **Les scores globaux ne départagent pas les trois modèles** (test de McNemar sur les questions où ils divergent : p ≥ 0,11). Le choix de la V1 s'est fait sur le reste : vitesse, taille, appel d'outils natif, licence, et un déploiement sans GPU. Le raisonnement complet : [docs/adr/0003-choix-des-modeles.md](docs/adr/0003-choix-des-modeles.md).
+2. **Les questions générées par une IA flattent le modèle généraliste** : `qwen3:4b-instruct` passe de 83 % sur les questions générées à 66 % sur les phrases écrites à la main. Le spécialiste darija tient à 80 % sur les deux.
+3. **Chaque modèle est meilleur là où il a été entraîné** : Atlas-Chat en darija, qwen en anglais et en arabe standard.
+4. **La génération d'un modèle compte plus que sa taille** : `qwen3:8b` (avril 2025) fait moins bien que `qwen3:4b-instruct` (juillet 2025, réentraîné pour suivre les consignes).
+5. **Chaque outil ajouté peut voler des questions aux autres** : avec `lister_beneficiaires`, huit questions de FAQ (« zide liya benifciaire jdide ») partent vers la liste des bénéficiaires, pour qwen comme pour Atlas.
+6. **Une mesure peut se tromper, et ses erreurs se publient aussi** : un schéma JSON imposé par Ollama interdisait le montant après le bénéficiaire (premier passage d'Atlas invalide) ; sans leur consigne, les modèles d'embeddings étaient sous-estimés (Qwen3-Embedding : 58 % au lieu de 68 %).
+
+Les échecs restants sont publiés avec leurs familles dans [`resultats.md`](evals/benchmark/resultats.md) et dans les conversations annotées ([`annotations.md`](data/benchmark/annotations.md)) : bénéficiaires inventés par le LLM (« Ali » pour « liya ana »), « dibloque liya la carte » compris comme un blocage, questions de FAQ refusées.
+
+### Relancer les mesures
+
+Le benchmark n'a besoin ni de la base de données ni d'aucun secret : seulement Ollama, les deux serveurs MCP (pour la liste des outils) et promptfoo. Un modèle à la fois ; la liste est dans [`promptfooconfig.yaml`](evals/benchmark/promptfooconfig.yaml).
+
+```bash
+cd evals && npm ci && npm run benchmark   # sur le PC : Ollama, mcp-tools (8002) et rag-faq (8004) démarrés
+```
+
+Sur un GPU gratuit, avec le notebook [`evals/benchmark/colab.ipynb`](evals/benchmark/colab.ipynb) : [ouvrir dans Google Colab](https://colab.research.google.com/github/Oumaima-Lg/wakil/blob/main/evals/benchmark/colab.ipynb), choisir le GPU T4, puis tout exécuter. Les résultats d'une machine ne se comparent qu'à ceux de la même machine.
+
+La recherche dans la FAQ (base et Ollama démarrés, FAQ indexée), avec un autre modèle d'embeddings par `WAKIL_EMBEDDINGS` et sa consigne par `WAKIL_EMBEDDINGS_QUESTION` :
 
 ```bash
 cd apps/rag-faq && uv run --env-file ../../.env python ../../evals/faq/mesurer.py
 ```
 
-## Ce que le projet mesure
-
-- Taux de bons outils choisis et de paramètres exacts, par modèle et par écriture (arabe, latin, mélange)
-- Respect de la confirmation avant chaque opération
-- Taux de réussite des attaques (injection de prompt, accès au compte d'un autre client…), avant et après les protections
-- Temps de réponse et coût par conversation
-
-Premiers chiffres mesurés, sur 38 questions de FAQ et 10 qui n'en sont pas :
-
-| Étape | Mesure | Résultat |
-|---|---|---|
-| 1. Le LLM (`qwen3:4b-instruct`) envoie la question à la FAQ | bon outil choisi | **47 %** (lettres arabes 20 %, latines 50 %, mélange 64 %). Il était à 26 % avant la correction du prompt système. |
-| 2. `bge-m3` retrouve la bonne fiche | hit@1 / hit@3 | **71 % / 89 %** (lettres arabes 60 %, latines 71 %, mélange 73 %) |
-
-Le maillon faible est le LLM : c'est ce que le benchmark (S4) comparera entre modèles. Il est aussi très sensible à la **mise en forme** : la même description d'outil, avec ou sans retours à la ligne, fait varier ce score de 42 à 53 %. C'est pourquoi le benchmark utilisera plus de questions, et ne comparera que des prompts mis en forme de la même façon. Le détail, échecs compris, est dans [evals/faq/resultats.md](evals/faq/resultats.md) et [evals/faq/routage.md](evals/faq/routage.md). La mesure du choix de l'outil se lance avec :
-
-```bash
-cd apps/agent-api && uv run --env-file ../../.env python ../../evals/faq/routage.py
-```
+À venir avec S5 : le taux de réussite des attaques (injection de prompt, accès au compte d'un autre client…) avant et après chaque protection, et le benchmark bloquant dans la CI.
 
 ## Avancement
 
@@ -173,7 +223,7 @@ cd apps/agent-api && uv run --env-file ../../.env python ../../evals/faq/routage
 - [x] S1 — Banque fictive (API + fausses données)
 - [x] S2 — Agent LangGraph + interface Next.js (espace bancaire, chat en direct, version mobile)
 - [x] S3 — Confirmation avant chaque opération, serveurs MCP (banque, FAQ), RAG sur la FAQ avec réponses citées
-- [ ] S4 — Benchmark darija
+- [x] S4 — Benchmark darija : 5 modèles locaux comparés sur 113 questions, modèles de la V1 choisis (ADR 0003)
 - [ ] S5 — Sécurité + CI avec évaluation bloquante
 - [ ] S6 — Déploiement Azure avec Terraform
 - [ ] S7 — Ansible, Vault, observabilité, budget
@@ -185,4 +235,4 @@ Oumaima Laghjibi — Ingénieure logicielle · [LinkedIn](https://www.linkedin.c
 
 ---
 
-**English summary.** Wakil is a Darija-speaking banking agent built on a fully fictional bank. It understands Moroccan Arabic written in Arabic script, Latin script (Arabizi) or mixed with French, calls banking tools through MCP, and always asks for confirmation before any operation. The project publishes an open benchmark of LLM tool-calling accuracy in Darija, a security report on prompt-injection resistance, and is deployed on Azure with Terraform, Ansible, Vault and GitHub Actions.
+**English summary.** Wakil is a Darija-speaking banking agent built on a fully fictional bank. It understands Moroccan Arabic written in Arabic script, Latin script (Arabizi) or mixed with French, calls banking tools through MCP, and always asks for confirmation before any operation. The project publishes an open benchmark of LLM tool-calling accuracy in Darija (5 local models, 113 requests in Darija, French, English and Modern Standard Arabic; qwen3:4b-instruct chosen for v1, the Darija specialist Atlas-Chat 9B ahead on human-written requests), a security report on prompt-injection resistance, and is deployed on Azure with Terraform, Ansible, Vault and GitHub Actions.
