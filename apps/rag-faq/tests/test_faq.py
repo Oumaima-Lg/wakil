@@ -59,3 +59,15 @@ def test_sans_base_configuree_la_faq_se_dit_indisponible(monkeypatch):
 
 def test_un_vecteur_s_ecrit_comme_pgvector_le_lit():
     assert faq._vecteur([0.5, -0.25, 1.0]) == "[0.5,-0.25,1.0]"
+
+
+def test_par_defaut_le_texte_est_envoye_tel_quel():
+    assert (faq.GABARIT_QUESTION, faq.GABARIT_FICHE) == ("{texte}", "{texte}")  # bge-m3 : aucune consigne
+    assert faq.avec_gabarit(faq.GABARIT_QUESTION, "chhal frais {dyal} virement ?") == "chhal frais {dyal} virement ?"
+
+
+def test_une_consigne_avant_la_question():
+    gabarit = "Instruct: retrieve the FAQ entry\nQuery: {texte}"
+    assert (
+        faq.avec_gabarit(gabarit, "wach kayn frais ?") == "Instruct: retrieve the FAQ entry\nQuery: wach kayn frais ?"
+    )

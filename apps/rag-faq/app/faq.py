@@ -23,6 +23,11 @@ from psycopg_pool import ConnectionPool
 
 FICHIER = Path(__file__).resolve().parents[3] / "data" / "faq" / "faq.yaml"
 MODELE = os.environ.get("WAKIL_EMBEDDINGS", "bge-m3")
+# Certains modèles d'embeddings sont conçus pour recevoir une consigne avant le texte : Qwen3-Embedding pour la question
+# (« Instruct: …\nQuery: {texte} »), embeddinggemma pour la question et les fiches (« task: search result | query:
+# {texte} », « title: none | text: {texte} »). Par défaut, le texte tel quel : c'est le cas de bge-m3.
+GABARIT_QUESTION = os.environ.get("WAKIL_EMBEDDINGS_QUESTION", "{texte}")
+GABARIT_FICHE = os.environ.get("WAKIL_EMBEDDINGS_FICHE", "{texte}")
 # Similarité cosinus minimale (1 = même sens, 0 = sans rapport). Choisie sur les mesures : evals/faq/resultats.md.
 SEUIL = 0.6
 
@@ -98,6 +103,11 @@ def _vecteur(nombres: list[float]) -> str:
     return "[" + ",".join(map(str, nombres)) + "]"
 
 
+def avec_gabarit(gabarit: str, texte: str) -> str:
+    """Le texte placé dans son gabarit (replace et non format : une accolade dans le texte ne gêne pas)."""
+    return gabarit.replace("{texte}", texte)
+
+
 def _embeddings() -> OllamaEmbeddings:
     return OllamaEmbeddings(model=MODELE)
 
@@ -107,7 +117,7 @@ def indexer(fiches: list[dict] | None = None) -> tuple[int, int]:
     fiches = fiches if fiches is not None else lire_fiches()
     phrases = [(f["id"], f"{f['titre']}. {f['texte']}") for f in fiches]
     phrases += [(f["id"], question) for f in fiches for question in f["questions"]]
-    vecteurs = _embeddings().embed_documents([phrase for _, phrase in phrases])
+    vecteurs = _embeddings().embed_documents([avec_gabarit(GABARIT_FICHE, phrase) for _, phrase in phrases])
     with base().connection() as conn, conn.transaction():
         conn.execute("DELETE FROM faq_fiches WHERE NOT (id = ANY(%s))", ([f["id"] for f in fiches],))
         for f in fiches:
@@ -131,7 +141,7 @@ def classer(question: str, nombre: int = 3) -> list[Trouvaille]:
     """
     pool = base()  # d'abord la base : sans elle, inutile de faire calculer un vecteur à Ollama
     try:
-        vecteur = _vecteur(_embeddings().embed_query(question))
+        vecteur = _vecteur(_embeddings().embed_query(avec_gabarit(GABARIT_QUESTION, question)))
         with pool.connection() as conn:
             lignes = conn.execute(
                 """
