@@ -2,6 +2,8 @@
 # Mettre en forme : uvx ruff format · Vérifier : uvx ruff check
 line-length = 120
 target-version = "py312"
+# Le notebook Colab est surtout fait de commandes shell (« !cd … ») : ruff ne doit pas les réécrire.
+extend-exclude = ["*.ipynb"]
 
 [lint]
 # Règles par défaut (erreurs réelles) + imports triés (I) + bugs fréquents (B) + syntaxe moderne (UP).

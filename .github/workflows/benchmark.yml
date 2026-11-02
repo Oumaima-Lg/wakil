@@ -1,0 +1,110 @@
+# Benchmark darija bloquant : le modèle de Wakil doit garder au moins 75 % d'outils et de paramètres justes sur le
+# paquet « test » (113 questions jamais vues ; référence : 78 % sur Colab le 01/11/2026). Voir evals/benchmark/seuil.py.
+#
+# Il ne mesure que lorsque ce qui décide du choix de l'outil change : le code de l'agent (prompt, outils acceptés),
+# les descriptions des outils dans les serveurs MCP, les questions, la FAQ, le juge. Sinon le job réussit tout de
+# suite : il peut donc être exigé pour fusionner une PR (un job qui ne tournerait pas resterait « en attente »).
+# Aussi lançable à la main : onglet Actions → Benchmark → Run workflow.
+#
+# Sur le CPU du runner (pas de GPU), compter 15 à 40 minutes. Les résultats sont joints au passage (artefact).
+name: Benchmark
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark darija (seuil 75 %)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      MODELE: qwen3:4b-instruct
+      BENCHMARK_PAQUET: test # seulement le paquet qui donne la note
+      BENCHMARK_SEUIL: "75"
+      BENCHMARK_MACHINE: GitHub Actions, ubuntu-24.04 (CPU, sans GPU)
+      PROMPTFOO_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # pour comparer avec la branche visée par la PR
+          persist-credentials: false
+
+      - name: Le choix de l'outil est-il concerné ?
+        id: portee
+        env:
+          EVENEMENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          TETE: ${{ github.sha }}
+        run: |
+          if [ "$EVENEMENT" != pull_request ]; then echo "concerne=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          motif='^(apps/agent-api/app/|apps/mcp-tools/app/serveur\.py|apps/rag-faq/app/serveur\.py|data/benchmark/|data/faq/|evals/benchmark/|\.github/workflows/benchmark\.yml)'
+          if git diff --name-only "$BASE" "$TETE" | grep -Eq "$motif"; then
+            echo "concerne=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "concerne=false" >> "$GITHUB_OUTPUT"
+            echo "Ni l'agent, ni les outils, ni les questions n'ont changé : pas de mesure."
+          fi
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.portee.outputs.concerne == 'true'
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/*/uv.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.portee.outputs.concerne == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: evals/package-lock.json
+
+      - name: Ollama (image officielle, version épinglée) et le modèle
+        if: steps.portee.outputs.concerne == 'true'
+        run: |
+          docker run -d --name ollama -p 127.0.0.1:11434:11434 ollama/ollama:0.40.2
+          until curl -sf http://127.0.0.1:11434/api/version; do sleep 1; done
+          docker exec ollama ollama pull "$MODELE"
+
+      - name: Les deux serveurs MCP (seulement pour annoncer leurs outils)
+        if: steps.portee.outputs.concerne == 'true'
+        run: |
+          for service in mcp-tools rag-faq; do (cd "apps/$service" && uv sync --locked); done
+          (cd apps/mcp-tools && nohup uv run uvicorn app.serveur:app --port 8002 > ../../mcp-tools.log 2>&1 &)
+          (cd apps/rag-faq && nohup uv run uvicorn app.serveur:app --port 8004 > ../../rag-faq.log 2>&1 &)
+          for port in 8002 8004; do
+            until (echo > "/dev/tcp/127.0.0.1/$port") 2> /dev/null; do sleep 1; done
+          done
+
+      - name: L'agent (son code construit le vrai prompt) et promptfoo
+        if: steps.portee.outputs.concerne == 'true'
+        run: |
+          (cd apps/agent-api && uv sync --locked)
+          (cd evals && npm ci)
+
+      - name: Benchmark
+        if: steps.portee.outputs.concerne == 'true'
+        working-directory: evals
+        run: npm run benchmark -- "$MODELE"
+
+      - name: Seuil
+        if: steps.portee.outputs.concerne == 'true'
+        working-directory: evals/benchmark
+        run: ../../apps/agent-api/.venv/bin/python seuil.py "$MODELE"
+
+      - name: Résultats (à télécharger depuis la page du passage)
+        if: always() && steps.portee.outputs.concerne == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: benchmark
+          path: |
+            evals/benchmark/resultats/
+            evals/benchmark/resultats.md
+            mcp-tools.log
+            rag-faq.log

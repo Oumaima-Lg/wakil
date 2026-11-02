@@ -1,0 +1,110 @@
+# Intégration continue de Wakil, à chaque pull request et à chaque push sur main.
+#
+# Équivalent GitLab CI : le fichier .gitlab-ci.yml. Chaque « job » tourne sur une machine neuve (un « runner » Ubuntu
+# fourni par GitHub, gratuit pour un dépôt public), en parallèle des autres. Une étape « uses: » appelle une action
+# toute faite (comme un plugin Jenkins) ; une étape « run: » lance des commandes shell.
+#
+# Les actions sont épinglées par leur SHA (le commit exact), pas par un tag : un tag peut être déplacé vers du code
+# malveillant (incident tj-actions/changed-files, mars 2025), pas un SHA. Dependabot propose les mises à jour
+# (.github/dependabot.yml).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Le jeton GitHub donné aux jobs ne peut que lire le dépôt.
+permissions:
+  contents: read
+
+# Un nouveau push annule la vérification encore en cours de la même branche.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tout l'historique : un secret effacé reste lisible dans les anciens commits
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # créé par GitHub pour ce job, pas un secret à nous
+          GITLEAKS_ENABLE_COMMENTS: false # pas de commentaire sur la PR : le jeton reste en lecture seule
+
+  style:
+    name: Style Python (ruff)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uvx ruff@0.17.3 check .
+      - run: uvx ruff@0.17.3 format --check .
+
+  python:
+    name: Tests ${{ matrix.service }}
+    runs-on: ubuntu-24.04
+    # Une « matrice » : le même job, une fois par service (comme parallel:matrix dans GitLab CI).
+    strategy:
+      fail-fast: false # un service en échec n'arrête pas les autres : on voit tout d'un coup
+      matrix:
+        service: [bank-api, mcp-tools, portail-api, agent-api, rag-faq]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true # garde les paquets téléchargés d'un passage à l'autre
+          cache-dependency-glob: apps/${{ matrix.service }}/uv.lock
+      - name: Base de la banque et données fictives
+        if: matrix.service == 'bank-api'
+        working-directory: .
+        run: |
+          # Le .env de la CI : les mots de passe de .env.example tirés au hasard, jetés avec la machine.
+          sed "s/a-remplacer/$(openssl rand -hex 16)/" .env.example > .env
+          docker compose up -d --wait
+          uv run --env-file .env data/seed/generer_donnees.py
+      - name: Dépendances (exactement celles de uv.lock)
+        run: uv sync --locked
+      - name: Tests
+        run: uv run ${{ matrix.service == 'bank-api' && '--env-file ../../.env' || '' }} pytest -q
+      - name: Contrats d'architecture (import-linter)
+        if: matrix.service != 'bank-api'
+        run: uv run lint-imports
+      - name: Tests des outils de mesure (juge du benchmark, juge des attaques)
+        if: matrix.service == 'agent-api'
+        working-directory: evals
+        run: >-
+          ../apps/agent-api/.venv/bin/python -m pytest -q
+          benchmark/test_verifier.py benchmark/test_fournisseur.py securite/test_attaquer.py
+
+  web:
+    name: Site (lint, types, build)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build

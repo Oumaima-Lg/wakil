@@ -1,0 +1,8 @@
+# Dependabot propose une PR quand une action de nos workflows a une nouvelle version : il met à jour le SHA épinglé et
+# le commentaire de version. La PR passe par la CI comme les autres, et n'est fusionnée qu'après relecture.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
