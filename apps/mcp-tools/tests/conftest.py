@@ -52,6 +52,7 @@ def jeton_de_session(client_id: int, cle_privee: str = PORTAIL_PRIVEE, **changem
     }
     return jwt.encode(contenu, cle(cle_privee), algorithm="RS256")
 
+
 EAU, INTERNET = "Eau & Électricité (démo)", "Internet (démo)"
 FACTURES = {
     1: [{"id": 1, "fournisseur": EAU, "montant": "312.00", "statut": "impayee"},

@@ -9,6 +9,7 @@ Deux paquets :
 """
 
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -102,7 +103,9 @@ def creer_tests(config: dict | None = None) -> list[dict]:
                 "assert": [{"type": "python", "value": "file://verifier.py"}],
             }
         )
-    return tests
+    # La CI ne joue que le paquet qui donne la note (BENCHMARK_PAQUET=test) : un tiers de questions en moins sur CPU.
+    voulu = os.environ.get("BENCHMARK_PAQUET")
+    return [t for t in tests if not voulu or t["vars"]["paquet"] == voulu]
 
 
 if __name__ == "__main__":
