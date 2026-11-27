@@ -29,7 +29,12 @@ FROM ${PYTHON} AS service
 ARG SERVICE
 ARG APPLICATION=app.main:app
 ARG PORT=8000
-RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin wakil
+# Les correctifs de sécurité Debian publiés depuis la construction de l'image de base (Trivy les signale), puis sans pip :
+# l'application ne s'en sert jamais (uv a tout installé à l'étape d'avant), et pip embarque ses propres copies de
+# paquets (urllib3, msgpack…) qui ont elles aussi des failles.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall --yes --quiet pip \
+    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin wakil
 COPY --from=construction /srv /srv
 WORKDIR /srv/apps/${SERVICE}
 ENV PATH=/srv/.venv/bin:$PATH PYTHONUNBUFFERED=1 APPLICATION=${APPLICATION} PORT=${PORT}

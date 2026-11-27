@@ -31,6 +31,11 @@ ARG PORTAIL_API_URL
 # Les mêmes adresses à l'exécution : la page d'accueil interroge portail-api côté serveur (ListeClientsDemo).
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 \
     AGENT_API_URL=${AGENT_API_URL} PORTAIL_API_URL=${PORTAIL_API_URL}
+# Les correctifs de sécurité Debian (Trivy les signale), puis sans npm, npx ni corepack : le serveur n'a besoin que de
+# node, et npm embarque ses propres copies de paquets (undici, brace-expansion…) qui ont elles aussi des failles.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+        /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 COPY --from=construction --chown=node:node /app/.next/standalone ./
 COPY --from=construction --chown=node:node /app/.next/static ./.next/static
 USER node
