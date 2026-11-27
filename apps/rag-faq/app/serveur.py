@@ -9,11 +9,13 @@ La FAQ est publique : le serveur ne demande pas qui est le client, et agent-api 
 données). Il ne rédige rien : il renvoie la fiche telle qu'elle est écrite, et c'est l'agent qui la cite.
 """
 
+import os
 from dataclasses import asdict
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -45,5 +47,20 @@ def question_faq(
     return {"fiche": asdict(trouvaille) if trouvaille else None}
 
 
+# Protection contre le « DNS rebinding » (une page web qui ferait parler le navigateur à un serveur MCP local) : le
+# serveur n'accepte que les requêtes adressées à un nom connu (en-tête Host). Par défaut localhost seulement ; dans Docker
+# ou sur Azure, le nom du service s'y ajoute par MCP_HOTES_AUTORISES (séparés par des virgules, « rag-faq:* » pour tous
+# les ports).
+def securite(hotes_autorises: str) -> TransportSecuritySettings:
+    hotes = [hote.strip() for hote in hotes_autorises.split(",") if hote.strip()]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *hotes],
+        allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
+    )
+
+
 # L'application web (ASGI) que lance uvicorn, sans état comme le serveur de la banque (apps/mcp-tools).
-app = serveur.streamable_http_app(stateless_http=True, json_response=True)
+app = serveur.streamable_http_app(
+    stateless_http=True, json_response=True, transport_security=securite(os.environ.get("MCP_HOTES_AUTORISES", ""))
+)

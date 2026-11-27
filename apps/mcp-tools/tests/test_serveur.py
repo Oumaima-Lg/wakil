@@ -3,11 +3,12 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+import httpx
 import jwt
 import pytest
 from conftest import MCP_PUBLIQUE, cle, jeton_de_session
 
-from app import analyse, banque, jetons
+from app import analyse, banque, jetons, serveur
 
 
 def resultat(appel):
@@ -374,3 +375,20 @@ def test_la_carte_designee_par_ses_4_derniers_chiffres(mcp, fausse_banque, chiff
 
 def test_des_chiffres_qui_ne_correspondent_a_aucune_carte(mcp):
     assert resultat(mcp("bloquer_carte", {"carte": "0000"}))["refus"]["code"] == "carte_introuvable"
+
+
+# --- Protection contre le « DNS rebinding » ------------------------------------------------------------------------
+
+
+def test_une_requete_adressee_a_un_nom_inconnu_est_refusee(url_du_serveur):
+    reponse = httpx.post(url_du_serveur, headers={"Host": "attaquant.example:8002"}, json={})
+
+    assert reponse.status_code == 421
+
+
+def test_les_noms_autorises_s_ajoutent_a_localhost_sans_couper_la_protection():
+    reglages = serveur.securite(" mcp-tools:*, mcp-tools.interne.example ")
+
+    assert reglages.enable_dns_rebinding_protection
+    assert reglages.allowed_hosts[-2:] == ["mcp-tools:*", "mcp-tools.interne.example"]
+    assert "localhost:*" in reglages.allowed_hosts

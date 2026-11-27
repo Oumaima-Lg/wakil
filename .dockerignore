@@ -1,0 +1,9 @@
+# Ce qui entre dans le contexte des images Python (construites depuis la racine, voir apps/python.Dockerfile).
+# Liste blanche : tout est exclu, puis on réautorise le strict nécessaire. Un fichier oublié ici manque à l'image, au
+# lieu d'y entrer par erreur : .env et ses clés, .git, les .venv et les node_modules n'y arrivent jamais.
+*
+!apps/*/pyproject.toml
+!apps/*/uv.lock
+!apps/*/app
+!data/faq
+**/__pycache__

@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 import { AGENT_API_URL, PORTAIL_API_URL } from "./lib/config";
 
 const nextConfig: NextConfig = {
+  // « next build » produit aussi un serveur autonome (.next/standalone), avec seulement les fichiers utiles : c'est
+  // lui que lance l'image Docker (apps/web/Dockerfile). Sans effet sur « next dev ».
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   // Le bouton « N » des outils de Next (en développement seulement). Par défaut en bas à gauche, il cacherait
