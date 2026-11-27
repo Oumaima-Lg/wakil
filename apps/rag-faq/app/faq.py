@@ -86,7 +86,7 @@ def base() -> ConnectionPool:
         with pool.connection() as conn:
             if conn.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'").fetchone() is None:
                 pool.close()
-                raise FaqIndisponible("pgvector n'est pas activé : relancer base-faq.sh (voir le README)")
+                raise FaqIndisponible("pgvector n'est pas activé : relancer base-faq.sh (voir docs/developpement.md)")
             for requete in SCHEMA:
                 conn.execute(requete)
         atexit.register(pool.close)

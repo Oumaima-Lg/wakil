@@ -123,5 +123,16 @@ services:
       - "127.0.0.1:3100:3000"
     depends_on: [portail-api, agent-api]
 
+  # Un Chrome sans fenêtre, pour les captures d'écran du README (docs/captures/capturer.py) : profil « captures ». Le
+  # script le pilote par le port 9222 (DevTools). Le site est relayé sur son localhost:3000 (socat, déjà dans l'image) :
+  # une page en http:// n'est « sûre » que sur localhost, et le chat se sert de crypto.randomUUID, réservé aux pages
+  # sûres (en ligne, le site sera en HTTPS).
+  navigateur:
+    profiles: [captures]
+    image: chromedp/headless-shell:158.0.8127.18@sha256:830fa77e0602cb42e5cb2cbd9237ba27b649ad69d5fb82b54713aac8b7ab4f29
+    entrypoint: ["sh", "-c", "socat TCP4-LISTEN:3000,fork,reuseaddr TCP4:web:3000 & exec /headless-shell/run.sh"]
+    ports:
+      - "127.0.0.1:9222:9222"
+
 volumes:
   db-data:

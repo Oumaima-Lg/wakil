@@ -2,7 +2,7 @@
 
 Interface de la Banque Atlas Démo et de son assistant Wakil. **Données 100 % fictives – projet de démonstration.**
 
-Lancer en local (portail-api sur le port 8003 et agent-api sur le port 8001 doivent tourner, voir le README à la racine) :
+Lancer en local (portail-api sur le port 8003 et agent-api sur le port 8001 doivent tourner, voir [docs/developpement.md](../../docs/developpement.md)) :
 
 ```bash
 npm run dev
