@@ -86,7 +86,7 @@ jobs:
         if: matrix.service == 'agent-api'
         working-directory: evals
         run: >-
-          ../apps/agent-api/.venv/bin/python -m pytest -q
+          $GITHUB_WORKSPACE/apps/agent-api/.venv/bin/python -m pytest -q
           benchmark/test_verifier.py benchmark/test_fournisseur.py securite/test_attaquer.py
 
   web:

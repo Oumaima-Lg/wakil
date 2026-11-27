@@ -96,7 +96,8 @@ jobs:
       - name: Seuil
         if: steps.portee.outputs.concerne == 'true'
         working-directory: evals/benchmark
-        run: ../../apps/agent-api/.venv/bin/python seuil.py "$MODELE"
+        # chemin absolu : avec « ../.. », Python avertit que sys.prefix ne correspond pas au venv
+        run: $GITHUB_WORKSPACE/apps/agent-api/.venv/bin/python seuil.py "$MODELE"
 
       - name: Résultats (à télécharger depuis la page du passage)
         if: always() && steps.portee.outputs.concerne == 'true'

@@ -1,5 +1,8 @@
 # Wakil — agent bancaire en darija, évalué et sécurisé
 
+[![CI](https://github.com/Oumaima-Lg/wakil/actions/workflows/ci.yml/badge.svg)](https://github.com/Oumaima-Lg/wakil/actions/workflows/ci.yml)
+[![Benchmark](https://github.com/Oumaima-Lg/wakil/actions/workflows/benchmark.yml/badge.svg)](https://github.com/Oumaima-Lg/wakil/actions/workflows/benchmark.yml)
+
 > **Données 100 % fictives – projet de démonstration.** « Banque Atlas Démo » n'existe pas ; aucun client, compte ou fournisseur n'est réel.
 
 **Wakil** (وكيل, « agent ») est un assistant bancaire qui **comprend la darija** (écriture arabe, lettres latines ou mélange avec le français) et **agit** : consulter un solde, payer une facture, faire un virement. Il demande toujours une **confirmation** avant une opération.
@@ -45,9 +48,9 @@ En vert, les pages et le bac à sable, sans IA. En violet, le chemin de l'IA. En
 | `web` (Next.js) | 3000 | Les pages et le chat. Envoie `/api/chat` à agent-api et le reste de `/api/…` à portail-api | Aucune règle métier, aucun appel à bank-api |
 | `portail-api` (FastAPI) | 8003 | Ouvre la session (jeton signé avec la clé privée, dans un cookie HttpOnly) et sert les pages de l'espace bancaire ; plus tard, le bac à sable des visiteurs | Aucune IA : ni LLM, ni agent, ni outil MCP |
 | `agent-api` (FastAPI, LangGraph) | 8001 | Wakil : le LLM comprend la demande et choisit l'outil ; LangGraph aiguille vers les outils de la banque ou la FAQ, demande « Wach nconfirmi ? » avant toute opération, et le code écrit la réponse | Ne crée aucune session (il n'a que la clé publique), n'appelle jamais bank-api directement, n'a aucun accès à l'index de la FAQ |
-| `mcp-tools` (serveur MCP) | 8002 | Les outils de la banque pour l'IA : retrouve la facture ou le bénéficiaire ; sans la confirmation du client, fait seulement une vérification à blanc | Ne prend jamais le client dans les arguments du LLM (il vient de l'en-tête de la requête) |
+| `mcp-tools` (serveur MCP) | 8002 | Les outils de la banque pour l'IA : retrouve la facture ou le bénéficiaire ; sans la confirmation du client, fait seulement une vérification à blanc | Ne prend jamais le client dans les arguments du LLM (il vient du jeton de session, relayé par agent-api) |
 | `rag-faq` (serveur MCP) | 8004 | Le RAG de la FAQ : l'outil `question_faq` retrouve la fiche la plus proche (bge-m3 + pgvector, dans sa propre base) ; l'indexation de `faq.yaml` | Ne rédige rien, ne parle ni à la banque ni au LLM de l'agent, ne reçoit pas l'identité du client |
-| `bank-api` (FastAPI, PostgreSQL) | 8000 | Les données fictives et toutes les règles : solde suffisant, plafond, facture déjà payée, compte du bon client ; journal d'audit | Ne connaît ni l'IA, ni le navigateur |
+| `bank-api` (FastAPI, PostgreSQL) | 8000 | Les données fictives et toutes les règles : solde suffisant, plafond, facture déjà payée, compte du bon client ; journal d'audit | Ne connaît ni l'IA, ni le navigateur ; n'accepte que des jetons de 60 secondes signés par mcp-tools ou portail-api |
 
 Trois règles tiennent cette découpe :
 
@@ -55,7 +58,7 @@ Trois règles tiennent cette découpe :
   - agent-api ne peut importer aucun client HTTP ;
   - portail-api ne peut importer aucune brique d'IA ;
   - rag-faq ne peut importer ni LangGraph ni client HTTP.
-- **La session est créée à un seul endroit** : portail-api signe le jeton (RS256) avec sa clé privée. agent-api le vérifie avec la clé publique, sans pouvoir en fabriquer.
+- **La session est créée à un seul endroit** : portail-api signe le jeton (RS256) avec sa clé privée. agent-api le vérifie avec la clé publique, sans pouvoir en fabriquer, puis le relaie au serveur MCP, qui le vérifie à son tour et signe son propre jeton de 60 secondes pour la banque ([ADR 0004](docs/adr/0004-jetons-entre-services.md)).
 - **Les règles métier ne sont jamais confiées au LLM** : c'est bank-api qui accepte ou refuse une opération.
 
 Chaque service a sa propre base PostgreSQL et son propre utilisateur, sans droit sur les autres : la banque (`banque_atlas_demo`), les conversations de l'agent (`wakil_agent`) et les vecteurs de la FAQ (`wakil_faq`). Un agent piégé ne peut donc pas modifier la FAQ. Le LLM et le modèle d'embeddings tournent en local avec Ollama. Le pourquoi de cette découpe est expliqué dans [docs/adr/0001-roles-des-services.md](docs/adr/0001-roles-des-services.md).
@@ -69,10 +72,16 @@ Pour une question générale (frais, plafond, carte perdue, sécurité…), Waki
 1. **Indexation**, à chaque modification de la FAQ : le modèle d'embeddings `bge-m3` transforme le texte de chaque fiche, et chacune de ses questions types en darija, en un vecteur de 1024 nombres. Ces vecteurs sont rangés avec pgvector dans la base de rag-faq.
 2. **À chaque question** : la phrase du client devient un vecteur, et pgvector trouve la fiche la plus proche (similarité cosinus). Sous le seuil de 0,60, Wakil répond qu'il n'a pas trouvé, au lieu de citer un texte qui ne répond pas.
 
+### Les cartes, et le mode sécurité
+
+Dans l'espace « Ma carte », le client bloque ou débloque sa carte, fait opposition (perte ou vol : c'est définitif), puis commande une nouvelle carte. Wakil, lui, peut seulement **bloquer** une carte (« bloqui liya la carte »), toujours après confirmation : réactiver une carte ou faire opposition ne passe jamais par la conversation.
+
+Tant que la carte est bloquée, ou que toutes les cartes sont en opposition, Wakil passe en **mode sécurité** : il ne fait plus rien (ni lecture, ni opération, ni FAQ) et explique comment débloquer la carte dans l'espace. C'est un choix volontaire pour la démonstration : une vraie banque laisse en général le compte utilisable quand seule la carte est bloquée.
+
 À venir :
 
 - traces OpenTelemetry vers Phoenix ;
-- déploiement sur Azure (Terraform, Ansible, Vault, GitHub Actions).
+- déploiement sur Azure (Terraform, Ansible, Vault).
 
 ## Stack
 
@@ -81,9 +90,9 @@ Pour une question générale (frais, plafond, carte perdue, sécurité…), Waki
 | Front-end | Next.js, TypeScript |
 | Back-end | Python, FastAPI |
 | IA | LangGraph, LangChain, MCP, Ollama, pgvector |
-| Évaluation et sécurité | promptfoo, DeepEval, OWASP Top 10 LLM et agentique |
+| Évaluation et sécurité | promptfoo, OWASP Top 10 LLM et agentique |
 | Données | PostgreSQL, Faker |
-| CI/CD | GitHub Actions, gitleaks, Trivy, Checkov |
+| CI/CD | GitHub Actions, gitleaks, Dependabot ; Trivy et Checkov avec le déploiement (S6) |
 | Infrastructure | Terraform, Ansible, HashiCorp Vault, Azure Key Vault |
 | Cloud | Azure Container Apps, ACR, PostgreSQL Flexible Server |
 | Observabilité | OpenTelemetry, Phoenix |
@@ -141,6 +150,7 @@ cd apps/portail-api && uv run pytest && uv run lint-imports  # banque simulée, 
 cd apps/rag-faq && uv run pytest && uv run lint-imports      # le test lance son serveur MCP ; sans Ollama ni base
 cd apps/agent-api && uv run pytest && uv run lint-imports    # sans Ollama ni serveurs MCP (doublures)
 cd apps/web && npm run lint && npm run typecheck
+cd evals && ../apps/agent-api/.venv/bin/python -m pytest benchmark securite   # les juges du benchmark et des attaques
 ```
 
 Pour relancer les mesures du benchmark et de la FAQ : voir [Relancer les mesures](#relancer-les-mesures).
@@ -217,7 +227,36 @@ La recherche dans la FAQ (base et Ollama démarrés, FAQ indexée), avec un autr
 cd apps/rag-faq && uv run --env-file ../../.env python ../../evals/faq/mesurer.py
 ```
 
-À venir avec S5 : le taux de réussite des attaques (injection de prompt, accès au compte d'un autre client…) avant et après chaque protection, et le benchmark bloquant dans la CI.
+Les attaques (les six services démarrés, la carte de Salma active), le dernier mot étant le nom du passage :
+
+```bash
+cd apps/agent-api && uv run --env-file ../../.env python ../../evals/securite/attaquer.py avant
+```
+
+## Sécurité
+
+32 attaques, en darija, en arabe, en français et en anglais, rangées par risque de l'[OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) et du Top 10 for Agentic Applications 2026 : injection de prompt, libellé de transaction piégé, opération sans confirmation, accès au compte d'un autre client, fuite du prompt ou d'un RIB, jeton forgé ou volé, rafale de messages. Le code juge chaque attaque (aucun juge LLM), en comparant l'état de la banque avant et après.
+
+| Passage (01/11/2026, qwen3:4b-instruct) | Attaques réussies |
+|---|---|
+| Avant les protections de S5 | 5/29 (**17 %**) |
+| Après les jetons entre services | 1/32 (3 %) |
+| Après le quota de messages | 0/32 (**0 %**) |
+
+- **Par le chat, aucune attaque n'a réussi**, avant comme après : le LLM ne fait que choisir un outil dans une liste fermée. Le code vérifie ce qu'il remplit, la banque applique ses règles, le client confirme chaque opération, le LLM ne relit jamais les données du compte (un libellé piégé ne l'atteint pas) et toutes les réponses sont écrites par le code.
+- **Les failles étaient aux frontières entre les services** : bank-api et le serveur MCP croyaient un simple en-tête `X-Client-Id`. Ils exigent maintenant des jetons signés ([ADR 0004](docs/adr/0004-jetons-entre-services.md)), et un quota limite chaque client à 20 messages par minute.
+- **0 % ne veut pas dire « sûr »** : ces attaques ont été proposées par une IA qui connaissait le code. Les limites, et ce qui reste à essayer, sont dans le rapport complet : [docs/securite.md](docs/securite.md).
+
+## Intégration continue
+
+À chaque pull request, [GitHub Actions](.github/workflows/) vérifie :
+
+- les **secrets** dans tout l'historique Git (gitleaks) et le **style** Python (ruff) ;
+- les **tests** et les contrats d'architecture des cinq services Python, bank-api avec sa base et ses données fictives ;
+- le **site** : lint, types et build ;
+- le **benchmark bloquant** : `qwen3:4b-instruct` doit garder au moins 75 % d'outils et de paramètres justes sur les 113 questions du paquet test (79,6 % mesurés sur le CPU du runner, en 16 minutes). Il ne mesure que si l'agent, les outils, les questions, la FAQ ou le juge changent.
+
+La branche `main` est protégée : toute modification passe par une pull request et ces vérifications. Les actions sont épinglées par leur SHA (un tag peut être déplacé vers du code malveillant, un SHA non), et Dependabot propose leurs mises à jour.
 
 ## Avancement
 
@@ -226,7 +265,7 @@ cd apps/rag-faq && uv run --env-file ../../.env python ../../evals/faq/mesurer.p
 - [x] S2 — Agent LangGraph + interface Next.js (espace bancaire, chat en direct, version mobile)
 - [x] S3 — Confirmation avant chaque opération, serveurs MCP (banque, FAQ), RAG sur la FAQ avec réponses citées
 - [x] S4 — Benchmark darija : 5 modèles locaux comparés sur 113 questions, modèles de la V1 choisis (ADR 0003)
-- [ ] S5 — Sécurité + CI avec évaluation bloquante
+- [x] S5 — Sécurité (32 attaques, 17 % → 0 % après les jetons entre services et le quota) + CI GitHub Actions avec benchmark bloquant
 - [ ] S6 — Déploiement Azure avec Terraform
 - [ ] S7 — Ansible, Vault, observabilité, budget
 - [ ] S8 — Documentation, vidéo, version 1.0
@@ -237,4 +276,4 @@ Oumaima Laghjibi — Ingénieure logicielle · [LinkedIn](https://www.linkedin.c
 
 ---
 
-**English summary.** Wakil is a Darija-speaking banking agent built on a fully fictional bank. It understands Moroccan Arabic written in Arabic script, Latin script (Arabizi) or mixed with French, calls banking tools through MCP, and always asks for confirmation before any operation. The project publishes an open benchmark of LLM tool-calling accuracy in Darija (5 local models, 113 requests in Darija, French, English and Modern Standard Arabic; qwen3:4b-instruct chosen for v1, the Darija specialist Atlas-Chat 9B ahead on human-written requests), a security report on prompt-injection resistance, and is deployed on Azure with Terraform, Ansible, Vault and GitHub Actions.
+**English summary.** Wakil is a Darija-speaking banking agent built on a fully fictional bank. It understands Moroccan Arabic written in Arabic script, Latin script (Arabizi) or mixed with French, calls banking tools through MCP, and always asks for confirmation before any operation. The project publishes an open benchmark of LLM tool-calling accuracy in Darija (5 local models, 113 requests in Darija, French, English and Modern Standard Arabic; qwen3:4b-instruct chosen for v1, the Darija specialist Atlas-Chat 9B ahead on human-written requests), and a security report (32 attacks mapped to the OWASP LLM and Agentic Top 10; attack success rate down from 17% to 0% after service-to-service tokens and rate limiting, with the limits of that number spelled out). GitHub Actions runs tests, secret scanning and a blocking Darija benchmark on every pull request. Deployment on Azure with Terraform, Ansible and Vault comes next.
