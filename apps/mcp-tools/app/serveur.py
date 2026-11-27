@@ -16,10 +16,12 @@ Deux règles de sécurité, valables pour n'importe quel client MCP (pas seuleme
   (« wakil/confirmation »). Sans elle, il ne fait qu'une vérification à blanc : rien ne bouge.
 """
 
+import os
 from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -188,6 +190,21 @@ def bloquer_carte(
     return operations.bloquer_carte(client_de(ctx), carte, carte_id, confirme(ctx))
 
 
+# Protection contre le « DNS rebinding » (une page web qui ferait parler le navigateur à un serveur MCP local) : le
+# serveur n'accepte que les requêtes adressées à un nom connu (en-tête Host). Par défaut localhost seulement ; dans Docker
+# ou sur Azure, le nom du service s'y ajoute par MCP_HOTES_AUTORISES (séparés par des virgules, « mcp-tools:* » pour tous
+# les ports).
+def securite(hotes_autorises: str) -> TransportSecuritySettings:
+    hotes = [hote.strip() for hote in hotes_autorises.split(",") if hote.strip()]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *hotes],
+        allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
+    )
+
+
 # L'application web (ASGI) que lance uvicorn. Sans état (spécification MCP 2026-07-28) : chaque requête se suffit à
 # elle-même, plusieurs copies du serveur peuvent tourner côte à côte (Azure Container Apps, S6).
-app = serveur.streamable_http_app(stateless_http=True, json_response=True)
+app = serveur.streamable_http_app(
+    stateless_http=True, json_response=True, transport_security=securite(os.environ.get("MCP_HOTES_AUTORISES", ""))
+)

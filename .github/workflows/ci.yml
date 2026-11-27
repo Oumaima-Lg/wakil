@@ -108,3 +108,37 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+
+  images:
+    name: Image ${{ matrix.image }} (Trivy, SBOM)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [bank-api, mcp-tools, rag-faq, portail-api, agent-api, web]
+    env:
+      IMAGE: ${{ matrix.image }}
+      # Trivy compare chaque paquet de l'image aux failles connues (CVE). Épinglé par son empreinte, comme les actions.
+      TRIVY: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Construire l'image, comme « docker compose --profile images »
+        run: |
+          cp .env.example .env # docker compose lit .env pour tout le fichier ; aucune valeur n'entre dans l'image
+          docker compose --profile images build "$IMAGE"
+      - name: Liste des composants (SBOM CycloneDX)
+        run: |
+          mkdir -p sbom
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD/sbom:/sbom" "$TRIVY" image --quiet --format cyclonedx --output "/sbom/$IMAGE.cdx.json" "wakil/$IMAGE:local"
+      - name: Failles graves avec un correctif disponible (bloquant)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            "$TRIVY" image --no-progress --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "wakil/$IMAGE:local"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sbom-${{ matrix.image }}
+          path: sbom/

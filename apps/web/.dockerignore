@@ -1,0 +1,8 @@
+# Ce qui n'entre jamais dans le contexte de l'image du site : les paquets et la construction locale (refaits dans
+# l'image), les fichiers d'environnement.
+node_modules
+.next
+tsconfig.tsbuildinfo
+.env*
+Dockerfile
+.dockerignore

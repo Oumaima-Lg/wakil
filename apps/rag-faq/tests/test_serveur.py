@@ -1,6 +1,8 @@
 """Tests du serveur MCP de la FAQ, en HTTP, avec le client MCP officiel (comme agent-api). Sans Ollama ni base."""
 
-from app import faq
+import httpx
+
+from app import faq, serveur
 
 FRAIS = faq.Trouvaille("frais", "Frais et tarifs", "La Banque Atlas Démo ne prélève aucun frais.", 0.82)
 
@@ -43,3 +45,20 @@ def test_faq_en_panne_donne_une_erreur_d_outil(mcp, monkeypatch):
 
     assert appel.is_error
     assert "FAQ indisponible" in appel.content[0].text
+
+
+# --- Protection contre le « DNS rebinding » ------------------------------------------------------------------------
+
+
+def test_une_requete_adressee_a_un_nom_inconnu_est_refusee(url_du_serveur):
+    reponse = httpx.post(url_du_serveur, headers={"Host": "attaquant.example:8002"}, json={})
+
+    assert reponse.status_code == 421
+
+
+def test_les_noms_autorises_s_ajoutent_a_localhost_sans_couper_la_protection():
+    reglages = serveur.securite(" rag-faq:*, rag-faq.interne.example ")
+
+    assert reglages.enable_dns_rebinding_protection
+    assert reglages.allowed_hosts[-2:] == ["rag-faq:*", "rag-faq.interne.example"]
+    assert "localhost:*" in reglages.allowed_hosts

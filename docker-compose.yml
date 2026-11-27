@@ -1,6 +1,24 @@
+# La base de données (lancée par « docker compose up -d --wait »). Avec « --profile images », les six services aussi,
+# dans leurs images de production : « docker compose --profile images up -d --build », puis http://localhost:3100.
+# Seul le site est ouvert sur le PC (port 3100, pour ne pas gêner « honcho » sur 3000) : les autres services ne se
+# joignent qu'entre eux, comme ce sera le cas sur Azure. Les conteneurs utilisent l'Ollama du PC.
+
+# Le commun des cinq services Python (apps/python.Dockerfile, construit depuis la racine).
+x-python: &python
+  profiles: [images]
+  depends_on:
+    db:
+      condition: service_healthy
+  extra_hosts:
+    - "host.docker.internal:host-gateway" # l'Ollama du PC
+x-construction: &construction
+  context: .
+  dockerfile: apps/python.Dockerfile
+  target: service
+
 services:
   db:
-    image: pgvector/pgvector:pg17  
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?à définir dans .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
@@ -12,7 +30,7 @@ services:
       FAQ_POSTGRES_PASSWORD: ${FAQ_POSTGRES_PASSWORD:?à définir dans .env}
       FAQ_POSTGRES_DB: ${FAQ_POSTGRES_DB:?à définir dans .env}
     ports:
-      - "127.0.0.1:5432:5432"  
+      - "127.0.0.1:5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./apps/bank-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -22,6 +40,88 @@ services:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       retries: 10
+
+  # Chaque service ne reçoit que ses propres variables, comme plus tard avec Key Vault : par exemple, seul portail-api
+  # a la clé privée des sessions, seul mcp-tools celle des jetons courts.
+  bank-api:
+    <<: *python
+    build:
+      <<: *construction
+      args: { SERVICE: bank-api, PORT: "8000" }
+    image: wakil/bank-api:local
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      WAKIL_JWT_CLE_PUBLIQUE: ${WAKIL_JWT_CLE_PUBLIQUE:-}
+      MCP_JWT_CLE_PUBLIQUE: ${MCP_JWT_CLE_PUBLIQUE:-}
+
+  mcp-tools:
+    <<: *python
+    build:
+      <<: *construction
+      args: { SERVICE: mcp-tools, APPLICATION: "app.serveur:app", PORT: "8002" }
+    image: wakil/mcp-tools:local
+    environment:
+      MCP_HOTES_AUTORISES: "mcp-tools:*" # le nom par lequel agent-api l'appelle (protection DNS rebinding)
+      BANK_API_URL: http://bank-api:8000
+      WAKIL_JWT_CLE_PUBLIQUE: ${WAKIL_JWT_CLE_PUBLIQUE:-}
+      MCP_JWT_CLE_PRIVEE: ${MCP_JWT_CLE_PRIVEE:-}
+
+  rag-faq:
+    <<: *python
+    build:
+      <<: *construction
+      target: rag-faq # avec data/faq, pour l'indexation
+      args: { SERVICE: rag-faq, APPLICATION: "app.serveur:app", PORT: "8004" }
+    image: wakil/rag-faq:local
+    environment:
+      MCP_HOTES_AUTORISES: "rag-faq:*"
+      POSTGRES_HOST: db
+      FAQ_POSTGRES_USER: ${FAQ_POSTGRES_USER}
+      FAQ_POSTGRES_PASSWORD: ${FAQ_POSTGRES_PASSWORD}
+      FAQ_POSTGRES_DB: ${FAQ_POSTGRES_DB}
+      OLLAMA_HOST: http://host.docker.internal:11434
+
+  portail-api:
+    <<: *python
+    build:
+      <<: *construction
+      args: { SERVICE: portail-api, PORT: "8003" }
+    image: wakil/portail-api:local
+    environment:
+      BANK_API_URL: http://bank-api:8000
+      WAKIL_JWT_CLE_PRIVEE: ${WAKIL_JWT_CLE_PRIVEE:-}
+      WAKIL_COOKIE_SECURISE: "0" # http://localhost : pas de HTTPS en local
+
+  agent-api:
+    <<: *python
+    build:
+      <<: *construction
+      args: { SERVICE: agent-api, PORT: "8001" }
+    image: wakil/agent-api:local
+    environment:
+      POSTGRES_HOST: db
+      AGENT_POSTGRES_USER: ${AGENT_POSTGRES_USER}
+      AGENT_POSTGRES_PASSWORD: ${AGENT_POSTGRES_PASSWORD}
+      AGENT_POSTGRES_DB: ${AGENT_POSTGRES_DB}
+      MCP_TOOLS_URL: http://mcp-tools:8002/mcp
+      MCP_FAQ_URL: http://rag-faq:8004/mcp
+      WAKIL_JWT_CLE_PUBLIQUE: ${WAKIL_JWT_CLE_PUBLIQUE:-}
+      OLLAMA_HOST: http://host.docker.internal:11434
+
+  web:
+    profiles: [images]
+    build:
+      context: apps/web
+      args: # figées dans l'image par « next build » (voir apps/web/Dockerfile)
+        AGENT_API_URL: http://agent-api:8001
+        PORTAIL_API_URL: http://portail-api:8003
+    image: wakil/web:local
+    ports:
+      - "127.0.0.1:3100:3000"
+    depends_on: [portail-api, agent-api]
 
 volumes:
   db-data:

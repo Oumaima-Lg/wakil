@@ -92,7 +92,7 @@ Tant que la carte est bloquée, ou que toutes les cartes sont en opposition, Wak
 | IA | LangGraph, LangChain, MCP, Ollama, pgvector |
 | Évaluation et sécurité | promptfoo, OWASP Top 10 LLM et agentique |
 | Données | PostgreSQL, Faker |
-| CI/CD | GitHub Actions, gitleaks, Dependabot ; Trivy et Checkov avec le déploiement (S6) |
+| CI/CD | GitHub Actions, gitleaks, Trivy (images et SBOM), Dependabot ; Checkov avec le déploiement |
 | Infrastructure | Terraform, Ansible, HashiCorp Vault, Azure Key Vault |
 | Cloud | Azure Container Apps, ACR, PostgreSQL Flexible Server |
 | Observabilité | OpenTelemetry, Phoenix |
@@ -140,6 +140,14 @@ uvx honcho start
 Pour lancer un seul service, par exemple pour le redémarrer à part, copier sa ligne du `Procfile` dans un terminal.
 
 Sur http://localhost:3000, choisir un client de démo, ouvrir l'espace bancaire, puis Wakil. Après quelques minutes sans message, Ollama décharge les modèles : la réponse suivante peut prendre jusqu'à 30 secondes. Sur un PC de 8 Go de mémoire, Ollama peut aussi décharger le LLM pour charger `bge-m3`, et inversement : la première question de FAQ peut alors prendre plus d'une minute.
+
+Les mêmes services dans leurs **images de production** : un Dockerfile commun aux cinq services Python ([`apps/python.Dockerfile`](apps/python.Dockerfile)) et celui du site ([`apps/web/Dockerfile`](apps/web/Dockerfile)), construits en plusieurs étapes, lancés avec un utilisateur sans droits, sans `.env` ni outils de construction dans l'image. Seul le site est ouvert sur le PC (http://localhost:3100) ; les autres services ne se joignent qu'entre eux, et chacun ne reçoit que ses propres secrets. Les conteneurs utilisent l'Ollama du PC.
+
+```bash
+docker compose --profile images up -d --build
+```
+
+Pour les arrêter sans arrêter la base : `docker compose --profile images rm -sf web agent-api portail-api mcp-tools rag-faq bank-api`.
 
 Les tests, et les contrats d'architecture (`lint-imports`) :
 
@@ -254,6 +262,7 @@ cd apps/agent-api && uv run --env-file ../../.env python ../../evals/securite/at
 - les **secrets** dans tout l'historique Git (gitleaks) et le **style** Python (ruff) ;
 - les **tests** et les contrats d'architecture des cinq services Python, bank-api avec sa base et ses données fictives ;
 - le **site** : lint, types et build ;
+- les **six images** : construites comme en local, scannées par [Trivy](https://trivy.dev/) (bloquant si une faille grave a un correctif disponible), avec leur liste de composants (SBOM au format CycloneDX) jointe au passage ;
 - le **benchmark bloquant** : `qwen3:4b-instruct` doit garder au moins 75 % d'outils et de paramètres justes sur les 113 questions du paquet test (79,6 % mesurés sur le CPU du runner, en 16 minutes). Il ne mesure que si l'agent, les outils, les questions, la FAQ ou le juge changent.
 
 La branche `main` est protégée : toute modification passe par une pull request et ces vérifications. Les actions sont épinglées par leur SHA (un tag peut être déplacé vers du code malveillant, un SHA non), et Dependabot propose leurs mises à jour.
