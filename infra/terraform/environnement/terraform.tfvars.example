@@ -1,0 +1,3 @@
+# Copier en terraform.tfvars (ignoré par Git), puis remplir.
+proprietaire   = "oumaima"
+version_images = "remplacer-par-le-sha-du-commit"

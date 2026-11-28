@@ -18,7 +18,7 @@ It comes with an **open benchmark** that measures whether a model understands a 
 | **Darija benchmark** | 113 unseen requests (Darija in three scripts, French, English, Modern Standard Arabic), scored by a deterministic judge. `qwen3:4b-instruct` 78 %, Darija specialist `atlas-chat:9b` 81 %: no significant gap (McNemar p ≥ 0.11). [Details](docs/benchmark.md) |
 | **Security** | 32 attacks mapped to the OWASP Top 10 for LLM Applications 2025 and for Agentic Applications 2026. Success rate **17 % → 0 %** after signed service-to-service tokens and rate limiting — with the limits of that number spelled out. [Report](docs/securite.md) |
 | **Local models only** | Ollama runs the LLM (`qwen3:4b-instruct`, native tool calling) and the embeddings (`bge-m3`): no customer data leaves the machine. [Decision record](docs/adr/0003-choix-des-modeles.md) |
-| **CI as a gate** | Every pull request runs the tests and architecture contracts of the five Python services, the web build, a secret scan, a Trivy scan of the six images with their SBOM, and a **blocking benchmark** (≥ 75 %; 79.6 % on a CPU runner). |
+| **CI as a gate** | Every pull request runs the tests and architecture contracts of the five Python services, the web build, a secret scan, a Trivy scan of the six images (with their SBOM) and of the Terraform code, and a **blocking benchmark** (≥ 75 %; 79.6 % on a CPU runner). |
 
 ## Demo
 
@@ -95,7 +95,7 @@ The detailed documents are written in French.
 | Darija benchmark: method, results by model, language and author, lessons | [docs/benchmark.md](docs/benchmark.md) · [full results](evals/benchmark/resultats.md) |
 | Security report: attacks, protections layer by layer, limits | [docs/securite.md](docs/securite.md) · [attack results](evals/securite/resultats.md) |
 | Development: setup, tests, measurements, screenshots, CI | [docs/developpement.md](docs/developpement.md) |
-| Decision records: service roles, quoted FAQ, model choice, service tokens | [docs/adr/](docs/adr/) |
+| Decision records: service roles, quoted FAQ, model choice, service tokens, Azure deployment | [docs/adr/](docs/adr/) |
 
 ## Tech stack
 
@@ -106,7 +106,7 @@ The detailed documents are written in French.
 | AI | LangGraph, LangChain, MCP (Python SDK), Ollama, pgvector |
 | Evaluation & security | promptfoo, custom deterministic judges, OWASP LLM and Agentic Top 10 |
 | Delivery | Docker (multi-stage, non-root images), GitHub Actions, gitleaks, Trivy + CycloneDX SBOM, Dependabot |
-| Next | Terraform, Azure Container Apps, Key Vault, OpenTelemetry |
+| Infrastructure as code | Terraform (azurerm 5): Azure Container Apps, Container Registry, Key Vault, PostgreSQL Flexible — written and checked in CI, not yet deployed |
 
 ## Status
 
@@ -114,7 +114,7 @@ The detailed documents are written in French.
 - [x] Human confirmation, MCP servers, FAQ retrieval with quoted answers
 - [x] Darija benchmark: 5 local models compared, v1 models chosen
 - [x] Security: 32 attacks, protections measured one by one, CI with a blocking benchmark
-- [ ] Cloud deployment: production images done; Terraform and Azure to come
+- [ ] Cloud deployment: production images and Terraform code done (no secret ever stored in Terraform state); deployment to Azure to come
 - [ ] Observability (OpenTelemetry), version 1.0
 
 ## Author

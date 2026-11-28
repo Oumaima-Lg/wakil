@@ -97,6 +97,27 @@ docker compose --profile images --profile captures up -d --build
 cd apps/agent-api && uv run python ../../docs/captures/capturer.py
 ```
 
+## L'infrastructure Azure (Terraform)
+
+Le code de l'infrastructure est dans [`infra/terraform/`](../infra/terraform/) : `bootstrap` (l'état Terraform et
+l'alerte de budget) et `environnement` (la démo). Les choix sont expliqués dans
+[l'ADR 0005](adr/0005-deploiement-azure.md). **Il n'a pas encore été appliqué** : pas de compte Azure pour l'instant.
+
+Le vérifier sans compte, comme la CI, avec Terraform et Trivy dans leurs images (aucune installation) :
+
+```bash
+cd infra/terraform
+TF="docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v $PWD:/infra hashicorp/terraform:1.17.1"
+$TF -chdir=/infra fmt -recursive -check
+$TF -chdir=/infra/environnement init -backend=false && $TF -chdir=/infra/environnement validate
+docker run --rm -v $PWD:/infra:ro aquasec/trivy:0.76.2 config /infra
+```
+
+Avec un compte (plus tard), dans cet ordre : `az login`, `export ARM_SUBSCRIPTION_ID=…`, puis le bootstrap
+(`terraform.tfvars` copié de l'exemple, `terraform init && terraform apply`), puis l'environnement (`etat.tfbackend`
+rempli avec les sorties du bootstrap, `terraform init -backend-config=etat.tfbackend`, `terraform plan`). Avant le
+premier `apply` de l'environnement, il faudra l'image d'Ollama et le job d'initialisation de la base (ADR 0005).
+
 ## Intégration continue
 
 À chaque pull request, [GitHub Actions](../.github/workflows/) vérifie :
@@ -104,6 +125,7 @@ cd apps/agent-api && uv run python ../../docs/captures/capturer.py
 - les **secrets** dans tout l'historique Git (gitleaks) et le **style** Python (ruff) ;
 - les **tests** et les contrats d'architecture des cinq services Python, bank-api avec sa base et ses données fictives ;
 - le **site** : lint, types et build ;
+- l'**infrastructure** : `terraform fmt` et `validate` des deux modules, et les règles de sécurité de Trivy (`trivy config`, bloquant sur les écarts graves) ;
 - les **six images** : construites comme en local, scannées par [Trivy](https://trivy.dev/) (bloquant si une faille grave a un correctif disponible), avec leur liste de composants (SBOM au format CycloneDX) jointe au passage ;
 - le **benchmark bloquant** : `qwen3:4b-instruct` doit garder au moins 75 % d'outils et de paramètres justes sur les 113 questions du paquet test (79,6 % mesurés sur le CPU du runner, en 16 minutes). Il ne mesure que si l'agent, les outils, les questions, la FAQ ou le juge changent.
 

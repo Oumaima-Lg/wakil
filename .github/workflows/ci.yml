@@ -142,3 +142,31 @@ jobs:
         with:
           name: sbom-${{ matrix.image }}
           path: sbom/
+
+  infrastructure:
+    name: Infrastructure (Terraform, Trivy)
+    runs-on: ubuntu-24.04
+    env:
+      # Terraform et Trivy tournent dans leurs images, épinglées par leur empreinte. Aucun compte Azure : on vérifie le
+      # code (forme, types, règles de sécurité), sans plan ni apply.
+      TERRAFORM: hashicorp/terraform:1.17.1@sha256:a5d5a5a892c98f60fcbfa81eac2a40fc19e7b3fa7719bccae10ff6111d22524a
+      TRIVY: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Mise en forme (terraform fmt)
+        run: docker run --rm -v "$PWD/infra/terraform:/infra" "$TERRAFORM" -chdir=/infra fmt -recursive -check -diff
+      - name: Validation des deux modules (sans compte Azure)
+        run: |
+          mkdir -p "$RUNNER_TEMP/fournisseurs" # un seul téléchargement d'azurerm pour les deux modules
+          for module in bootstrap environnement; do
+            docker run --rm -v "$PWD/infra/terraform:/infra" -v "$RUNNER_TEMP/fournisseurs:/cache" \
+              -e TF_PLUGIN_CACHE_DIR=/cache -e TF_IN_AUTOMATION=1 "$TERRAFORM" -chdir="/infra/$module" init -backend=false -input=false
+            docker run --rm -v "$PWD/infra/terraform:/infra" -v "$RUNNER_TEMP/fournisseurs:/cache" \
+              -e TF_PLUGIN_CACHE_DIR=/cache "$TERRAFORM" -chdir="/infra/$module" validate
+          done
+      - name: Règles de sécurité de l'infrastructure (Trivy, bloquant sur les écarts graves)
+        run: |
+          # Chaque écart accepté est justifié par un commentaire « #trivy:ignore » au-dessus de sa ressource.
+          docker run --rm -v "$PWD/infra/terraform:/infra:ro" "$TRIVY" config --exit-code 1 --severity HIGH,CRITICAL /infra
