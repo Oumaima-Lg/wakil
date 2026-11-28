@@ -1,0 +1,4 @@
+# Copier en terraform.tfvars (ignoré par Git), puis remplir.
+proprietaire      = "oumaima"
+budget_mensuel    = 10
+courriels_alertes = ["adresse@exemple.org"]

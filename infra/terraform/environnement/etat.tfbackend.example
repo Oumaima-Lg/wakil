@@ -1,0 +1,5 @@
+# Copier en etat.tfbackend (ignoré par Git) avec les sorties du bootstrap, puis :
+#   terraform init -backend-config=etat.tfbackend
+resource_group_name  = "rg-wakil-etat"
+storage_account_name = "stwakiletat000000"
+container_name       = "tfstate"

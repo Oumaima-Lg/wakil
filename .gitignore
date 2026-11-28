@@ -21,6 +21,7 @@ node_modules/
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfbackend
 
 # Réglages personnels de l'éditeur
 .vscode/
